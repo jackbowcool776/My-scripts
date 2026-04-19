@@ -1,7 +1,6 @@
 -- Universal Script by Claude
--- Fixed version with injection safety
+-- Toggle switch version
 
--- Wait for game to fully load
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local success, err = pcall(function()
@@ -10,28 +9,24 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Safe character getter
 local function getCharacter()
     return LocalPlayer.Character
 end
-
 local function getHumanoid()
     local char = getCharacter()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
-
 local function getRootPart()
     local char = getCharacter()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Wait for character
 repeat task.wait(0.1) until getCharacter() and getHumanoid() and getRootPart()
 
--- State variables
 local States = {
     Speed = false,
     Fly = false,
@@ -50,7 +45,6 @@ local FlyConnection = nil
 local NoclipConnection = nil
 local AntiAFKConnection = nil
 
--- Safe ESP folder
 local ESPFolder
 pcall(function()
     ESPFolder = Instance.new("Folder")
@@ -81,7 +75,6 @@ local function toggleFly()
 
     if States.Fly then
         hum.PlatformStand = true
-
         local bv = Instance.new("BodyVelocity")
         bv.Name = "FlyVelocity"
         bv.Velocity = Vector3.new(0,0,0)
@@ -133,12 +126,9 @@ end
 UserInputService.JumpRequest:Connect(function()
     if States.InfiniteJump then
         local hum = getHumanoid()
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
 end)
-
 local function toggleInfiniteJump()
     States.InfiniteJump = not States.InfiniteJump
 end
@@ -151,16 +141,11 @@ local function toggleAntiAFK()
     if States.AntiAFK then
         AntiAFKConnection = RunService.Heartbeat:Connect(function()
             if States.AntiAFK then
-                pcall(function()
-                    LocalPlayer:Move(Vector3.new(0,0,0))
-                end)
+                pcall(function() LocalPlayer:Move(Vector3.new(0,0,0)) end)
             end
         end)
     else
-        if AntiAFKConnection then
-            AntiAFKConnection:Disconnect()
-            AntiAFKConnection = nil
-        end
+        if AntiAFKConnection then AntiAFKConnection:Disconnect() AntiAFKConnection = nil end
     end
 end
 
@@ -175,18 +160,14 @@ local function toggleFullbright()
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 1e9
         for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("SunRaysEffect") then
-                v.Enabled = false
-            end
+            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("SunRaysEffect") then v.Enabled = false end
         end
     else
         Lighting.Ambient = OriginalAmbient
         Lighting.Brightness = OriginalBrightness
         Lighting.GlobalShadows = true
         for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("SunRaysEffect") then
-                v.Enabled = true
-            end
+            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("SunRaysEffect") then v.Enabled = true end
         end
     end
 end
@@ -226,10 +207,7 @@ local function createESP(player)
         distLabel.Parent = bb
 
         RunService.Heartbeat:Connect(function()
-            if not States.ESP then
-                pcall(function() bb:Destroy() end)
-                return
-            end
+            if not States.ESP then pcall(function() bb:Destroy() end) return end
             local char = player.Character
             local root = getRootPart()
             if char and char:FindFirstChild("HumanoidRootPart") and root then
@@ -245,9 +223,7 @@ local function toggleESP()
     States.ESP = not States.ESP
     if States.ESP then
         for _, p in pairs(Players:GetPlayers()) do createESP(p) end
-        Players.PlayerAdded:Connect(function(p)
-            if States.ESP then createESP(p) end
-        end)
+        Players.PlayerAdded:Connect(function(p) if States.ESP then createESP(p) end end)
     else
         if ESPFolder then ESPFolder:ClearAllChildren() end
     end
@@ -291,8 +267,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() gui.Parent = game:GetService("CoreGui") end)
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0,220,0,390)
-MainFrame.Position = UDim2.new(0,20,0.5,-195)
+MainFrame.Size = UDim2.new(0,240,0,420)
+MainFrame.Position = UDim2.new(0,20,0.5,-210)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25,25,35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = gui
@@ -335,7 +311,7 @@ Content.BackgroundTransparency = 1
 Content.Parent = MainFrame
 
 local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0,5)
+layout.Padding = UDim.new(0,6)
 layout.Parent = Content
 
 local padding = Instance.new("UIPadding")
@@ -344,8 +320,9 @@ padding.PaddingLeft = UDim.new(0,10)
 padding.PaddingRight = UDim.new(0,10)
 padding.Parent = Content
 
+-- Speed label
 local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Size = UDim2.new(1,0,0,20)
+SpeedLabel.Size = UDim2.new(1,0,0,18)
 SpeedLabel.BackgroundTransparency = 1
 SpeedLabel.TextColor3 = Color3.fromRGB(180,180,180)
 SpeedLabel.Font = Enum.Font.Gotham
@@ -354,6 +331,7 @@ SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 SpeedLabel.Text = "Speed Value: 50"
 SpeedLabel.Parent = Content
 
+-- Speed input
 local SpeedInput = Instance.new("TextBox")
 SpeedInput.Size = UDim2.new(1,0,0,28)
 SpeedInput.BackgroundColor3 = Color3.fromRGB(40,40,55)
@@ -380,44 +358,99 @@ SpeedInput.FocusLost:Connect(function()
     end
 end)
 
-local function createBtn(name, toggleFunc, stateKey)
+-- =====================
+-- TOGGLE SWITCH CREATOR
+-- =====================
+local function createToggleRow(labelText, toggleFunc, stateKey)
+    -- Row frame
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,36)
+    row.BackgroundColor3 = Color3.fromRGB(35,35,48)
+    row.BorderSizePixel = 0
+    row.Parent = Content
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,8)
+
+    -- Label
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1,-60,1,0)
+    label.Position = UDim2.new(0,12,0,0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(220,220,220)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Text = labelText
+    label.Parent = row
+
+    -- Switch background
+    local switchBG = Instance.new("Frame")
+    switchBG.Size = UDim2.new(0,44,0,24)
+    switchBG.Position = UDim2.new(1,-52,0.5,-12)
+    switchBG.BackgroundColor3 = Color3.fromRGB(60,60,75)
+    switchBG.BorderSizePixel = 0
+    switchBG.Parent = row
+    Instance.new("UICorner", switchBG).CornerRadius = UDim.new(1,0)
+
+    -- Switch circle
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0,18,0,18)
+    circle.Position = UDim2.new(0,3,0.5,-9)
+    circle.BackgroundColor3 = Color3.fromRGB(180,180,180)
+    circle.BorderSizePixel = 0
+    circle.Parent = switchBG
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1,0)
+
+    -- Click button overlay
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1,0,0,35)
-    btn.BackgroundColor3 = Color3.fromRGB(40,40,55)
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 14
-    btn.Text = name .. ": OFF"
-    btn.BorderSizePixel = 0
-    btn.Parent = Content
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    btn.Size = UDim2.new(1,0,1,0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = row
+
+    -- Tween info
+    local tweenOn = TweenService:Create(circle,
+        TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        {Position = UDim2.new(0,23,0.5,-9), BackgroundColor3 = Color3.fromRGB(255,255,255)}
+    )
+    local tweenOff = TweenService:Create(circle,
+        TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        {Position = UDim2.new(0,3,0.5,-9), BackgroundColor3 = Color3.fromRGB(180,180,180)}
+    )
+    local tweenBGOn = TweenService:Create(switchBG,
+        TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        {BackgroundColor3 = Color3.fromRGB(50,150,80)}
+    )
+    local tweenBGOff = TweenService:Create(switchBG,
+        TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        {BackgroundColor3 = Color3.fromRGB(60,60,75)}
+    )
 
     btn.MouseButton1Click:Connect(function()
         toggleFunc()
         if States[stateKey] then
-            btn.BackgroundColor3 = Color3.fromRGB(50,150,80)
-            btn.Text = name .. ": ON"
+            tweenOn:Play()
+            tweenBGOn:Play()
         else
-            btn.BackgroundColor3 = Color3.fromRGB(40,40,55)
-            btn.Text = name .. ": OFF"
+            tweenOff:Play()
+            tweenBGOff:Play()
         end
     end)
 end
 
-createBtn("Speed", toggleSpeed, "Speed")
-createBtn("Fly", toggleFly, "Fly")
-createBtn("Infinite Jump", toggleInfiniteJump, "InfiniteJump")
-createBtn("Anti-AFK", toggleAntiAFK, "AntiAFK")
-createBtn("Fullbright", toggleFullbright, "Fullbright")
-createBtn("ESP", toggleESP, "ESP")
-createBtn("Noclip", toggleNoclip, "Noclip")
+createToggleRow("Speed", toggleSpeed, "Speed")
+createToggleRow("Fly", toggleFly, "Fly")
+createToggleRow("Infinite Jump", toggleInfiniteJump, "InfiniteJump")
+createToggleRow("Anti-AFK", toggleAntiAFK, "AntiAFK")
+createToggleRow("Fullbright", toggleFullbright, "Fullbright")
+createToggleRow("ESP", toggleESP, "ESP")
+createToggleRow("Noclip", toggleNoclip, "Noclip")
 
 -- Minimize
 local minimized = false
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     Content.Visible = not minimized
-    MainFrame.Size = minimized and UDim2.new(0,220,0,40) or UDim2.new(0,220,0,390)
+    MainFrame.Size = minimized and UDim2.new(0,240,0,40) or UDim2.new(0,240,0,420)
     MinBtn.Text = minimized and "+" or "-"
 end)
 
