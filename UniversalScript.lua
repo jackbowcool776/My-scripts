@@ -1,5 +1,5 @@
 -- Universal Script by Claude
--- Fixed: single player picker, dropdown z-index, clickable commands
+-- Fixed player picker: inline dropdown pushes content down
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -188,6 +188,7 @@ local function createESP(player)
         end)
     end)
 end
+
 local function toggleESP()
     States.ESP = not States.ESP
     if States.ESP then
@@ -253,7 +254,6 @@ local function rejoin()
     end)
 end
 
--- Chat commands
 LocalPlayer.Chatted:Connect(function(msg)
     local args = string.lower(msg):split(" ")
     local cmd = args[1]
@@ -276,7 +276,7 @@ end)
 local gui = Instance.new("ScreenGui")
 gui.Name = "UniversalScript"
 gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Global -- IMPORTANT: allows dropdown to appear above everything
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 pcall(function() gui.Parent = game:GetService("CoreGui") end)
 
 local COLORS = {
@@ -293,6 +293,7 @@ local COLORS = {
     cmdColor  = Color3.fromRGB(100,180,255),
     drop      = Color3.fromRGB(38,38,58),
     dropItem  = Color3.fromRGB(50,50,72),
+    dropHover = Color3.fromRGB(62,62,88),
 }
 
 local OPEN_HEIGHT = 440
@@ -306,17 +307,9 @@ Main.Size = UDim2.new(0, WIDTH, 0, OPEN_HEIGHT)
 Main.Position = UDim2.new(0, 20, 0.3, 0)
 Main.BackgroundColor3 = COLORS.bg
 Main.BorderSizePixel = 0
-Main.ClipsDescendants = false -- FALSE so dropdowns aren't clipped
+Main.ClipsDescendants = true
 Main.Parent = gui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
-
--- Clip frame sits inside Main and clips the actual content
-local ClipFrame = Instance.new("Frame")
-ClipFrame.Name = "ClipFrame"
-ClipFrame.Size = UDim2.new(1, 0, 1, 0)
-ClipFrame.BackgroundTransparency = 1
-ClipFrame.ClipsDescendants = true
-ClipFrame.Parent = Main
 
 -- Title bar
 local TitleBar = Instance.new("Frame")
@@ -324,7 +317,7 @@ TitleBar.Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT)
 TitleBar.BackgroundColor3 = COLORS.titlebar
 TitleBar.BorderSizePixel = 0
 TitleBar.ZIndex = 10
-TitleBar.Parent = ClipFrame
+TitleBar.Parent = Main
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 10)
 
 local TitleText = Instance.new("TextLabel")
@@ -359,7 +352,7 @@ TabBar.Position = UDim2.new(0, 0, 0, CLOSED_HEIGHT)
 TabBar.BackgroundColor3 = COLORS.tabbar
 TabBar.BorderSizePixel = 0
 TabBar.ZIndex = 9
-TabBar.Parent = ClipFrame
+TabBar.Parent = Main
 
 local TabLayout = Instance.new("UIListLayout")
 TabLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -380,37 +373,42 @@ ScrollArea.BorderSizePixel = 0
 ScrollArea.ScrollBarThickness = 3
 ScrollArea.ScrollBarImageColor3 = Color3.fromRGB(80,80,110)
 ScrollArea.CanvasSize = UDim2.new(0,0,0,0)
+ScrollArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ScrollArea.ZIndex = 8
-ScrollArea.Parent = ClipFrame
+ScrollArea.Parent = Main
 
 -- Open/close
 OpenBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
         {Size = UDim2.new(0, WIDTH, 0, isOpen and OPEN_HEIGHT or CLOSED_HEIGHT)}):Play()
-    TweenService:Create(ClipFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
-        {Size = UDim2.new(1, 0, 0, isOpen and OPEN_HEIGHT or CLOSED_HEIGHT)}):Play()
     OpenBtn.Text = isOpen and "▼" or "▲"
 end)
 
 -- Dragging
 local dragging, dragStart, frameStart = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         frameStart = Main.Position
     end
 end)
 TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
+                     input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        Main.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+        Main.Position = UDim2.new(
+            frameStart.X.Scale, frameStart.X.Offset + delta.X,
+            frameStart.Y.Scale, frameStart.Y.Offset + delta.Y
+        )
     end
 end)
 
@@ -418,6 +416,7 @@ end)
 -- TAB SYSTEM
 -- =====================
 local tabData = {}
+
 local function switchTab(name)
     for tname, tinfo in pairs(tabData) do
         tinfo.content.Visible = tname == name
@@ -425,9 +424,6 @@ local function switchTab(name)
         tinfo.btn.TextColor3 = tname == name and Color3.fromRGB(255,255,255) or COLORS.subtext
     end
     ScrollArea.CanvasPosition = Vector2.new(0,0)
-    task.wait()
-    local layout = tabData[name] and tabData[name].content:FindFirstChildOfClass("UIListLayout")
-    if layout then ScrollArea.CanvasSize = UDim2.new(0,0,0, layout.AbsoluteContentSize.Y + 20) end
 end
 
 local function newTab(name)
@@ -444,13 +440,16 @@ local function newTab(name)
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
 
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1,0,1,0)
+    content.Name = name.."Content"
+    content.Size = UDim2.new(1,0,0,0)
+    content.AutomaticSize = Enum.AutomaticSize.Y
     content.BackgroundTransparency = 1
     content.Visible = false
     content.Parent = ScrollArea
 
     local cl = Instance.new("UIListLayout")
     cl.Padding = UDim.new(0,6)
+    cl.SortOrder = Enum.SortOrder.LayoutOrder
     cl.Parent = content
 
     local cp = Instance.new("UIPadding")
@@ -480,6 +479,7 @@ local function makeSection(parent, text)
     l.TextXAlignment = Enum.TextXAlignment.Left
     l.Text = "── "..text:upper().." ──"
     l.Parent = parent
+    return l
 end
 
 local function makeInput(parent, label, default, onChange)
@@ -519,6 +519,7 @@ local function makeInput(parent, label, default, onChange)
         if v then lbl.Text = label..": "..v onChange(v)
         else box.Text = tostring(default) end
     end)
+    return wrap
 end
 
 local function makeToggle(parent, label, toggleFn, stateKey)
@@ -575,6 +576,7 @@ local function makeToggle(parent, label, toggleFn, stateKey)
         toggleFn()
         if stateKey then updateVisual(States[stateKey]) end
     end)
+    return row
 end
 
 local function makeButton(parent, label, onClick)
@@ -594,15 +596,21 @@ end
 
 -- =====================
 -- PLAYER PICKER
--- Dropdown renders on Main (not clipped) so it appears above everything
+-- Inline dropdown: expands the frame and pushes content below it down
 -- =====================
 local function makePlayerPicker(parent)
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,50)
-    wrap.BackgroundColor3 = COLORS.row
-    wrap.BorderSizePixel = 0
-    wrap.Parent = parent
-    Instance.new("UICorner", wrap).CornerRadius = UDim.new(0,8)
+    local chosenName = nil
+    local dropOpen = false
+
+    -- Outer container - grows when dropdown opens
+    local outer = Instance.new("Frame")
+    outer.Name = "PlayerPicker"
+    outer.Size = UDim2.new(1,0,0,50)
+    outer.BackgroundColor3 = COLORS.row
+    outer.BorderSizePixel = 0
+    outer.ClipsDescendants = false
+    outer.Parent = parent
+    Instance.new("UICorner", outer).CornerRadius = UDim.new(0,8)
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1,-10,0,20)
@@ -613,7 +621,7 @@ local function makePlayerPicker(parent)
     lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Text = "Select Player:"
-    lbl.Parent = wrap
+    lbl.Parent = outer
 
     local selBtn = Instance.new("TextButton")
     selBtn.Size = UDim2.new(1,-20,0,22)
@@ -624,57 +632,59 @@ local function makePlayerPicker(parent)
     selBtn.TextSize = 12
     selBtn.Text = "Click to pick player ▾"
     selBtn.BorderSizePixel = 0
-    selBtn.Parent = wrap
+    selBtn.Parent = outer
     Instance.new("UICorner", selBtn).CornerRadius = UDim.new(0,5)
 
-    local chosenName = nil
-    local dropFrame = nil
-    local dropOpen = false
+    -- Dropdown list frame — sits BELOW the button, inside outer
+    local dropList = Instance.new("Frame")
+    dropList.Name = "DropList"
+    dropList.Size = UDim2.new(1,-20,0,0)
+    dropList.Position = UDim2.new(0,10,0,50)
+    dropList.BackgroundColor3 = COLORS.drop
+    dropList.BorderSizePixel = 0
+    dropList.ClipsDescendants = true
+    dropList.Visible = false
+    dropList.Parent = outer
+    Instance.new("UICorner", dropList).CornerRadius = UDim.new(0,6)
 
-    selBtn.MouseButton1Click:Connect(function()
-        -- Close if already open
-        if dropOpen and dropFrame then
-            dropFrame:Destroy()
-            dropFrame = nil
-            dropOpen = false
-            return
-        end
+    local dropLayout = Instance.new("UIListLayout")
+    dropLayout.Padding = UDim.new(0,3)
+    dropLayout.Parent = dropList
+
+    local dropPad = Instance.new("UIPadding")
+    dropPad.PaddingTop = UDim.new(0,4)
+    dropPad.PaddingBottom = UDim.new(0,4)
+    dropPad.PaddingLeft = UDim.new(0,4)
+    dropPad.PaddingRight = UDim.new(0,4)
+    dropPad.Parent = dropList
+
+    local function closeDropdown()
+        dropOpen = false
+        selBtn.Text = (chosenName or "Click to pick player").." ▾"
+        -- Animate closed
+        TweenService:Create(dropList, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {Size = UDim2.new(1,-20,0,0)}):Play()
+        TweenService:Create(outer, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {Size = UDim2.new(1,0,0,50)}):Play()
+        task.wait(0.15)
+        dropList.Visible = false
+    end
+
+    local function openDropdown()
         dropOpen = true
+        -- Clear old items
+        for _, child in pairs(dropList:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
+        end
 
-        -- Get player list
+        -- Rebuild player list fresh
         local playerList = {}
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then table.insert(playerList, p.Name) end
         end
 
-        -- Calculate absolute position relative to Main
-        local absPos = selBtn.AbsolutePosition
-        local mainPos = Main.AbsolutePosition
-        local relX = absPos.X - mainPos.X
-        local relY = absPos.Y - mainPos.Y + selBtn.AbsoluteSize.Y + 4
-
         local itemH = 28
-        local dropH = math.min(#playerList, 5) * (itemH + 2) + 10
-        if #playerList == 0 then dropH = 36 end
-
-        -- Parent dropdown to Main so it's NOT clipped
-        dropFrame = Instance.new("Frame")
-        dropFrame.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, dropH)
-        dropFrame.Position = UDim2.new(0, relX, 0, relY)
-        dropFrame.BackgroundColor3 = COLORS.drop
-        dropFrame.BorderSizePixel = 0
-        dropFrame.ZIndex = 100
-        dropFrame.Parent = Main -- parent to Main not ClipFrame
-        Instance.new("UICorner", dropFrame).CornerRadius = UDim.new(0,8)
-
-        local dl = Instance.new("UIListLayout")
-        dl.Padding = UDim.new(0,2)
-        dl.Parent = dropFrame
-        local dp = Instance.new("UIPadding")
-        dp.PaddingTop = UDim.new(0,4)
-        dp.PaddingLeft = UDim.new(0,4)
-        dp.PaddingRight = UDim.new(0,4)
-        dp.Parent = dropFrame
+        local totalH = #playerList > 0 and math.min(#playerList, 5) * (itemH+3) + 8 or 32
 
         if #playerList == 0 then
             local none = Instance.new("TextLabel")
@@ -683,47 +693,48 @@ local function makePlayerPicker(parent)
             none.TextColor3 = COLORS.subtext
             none.Font = Enum.Font.Gotham
             none.TextSize = 12
-            none.Text = "No other players in server"
-            none.ZIndex = 101
-            none.Parent = dropFrame
-        end
+            none.Text = "No other players"
+            none.Parent = dropList
+        else
+            for _, name in pairs(playerList) do
+                local item = Instance.new("TextButton")
+                item.Size = UDim2.new(1,0,0,itemH)
+                item.BackgroundColor3 = COLORS.dropItem
+                item.TextColor3 = COLORS.text
+                item.Font = Enum.Font.Gotham
+                item.TextSize = 13
+                item.Text = name
+                item.BorderSizePixel = 0
+                item.Parent = dropList
+                Instance.new("UICorner", item).CornerRadius = UDim.new(0,5)
 
-        for _, name in pairs(playerList) do
-            local item = Instance.new("TextButton")
-            item.Size = UDim2.new(1,0,0,itemH)
-            item.BackgroundColor3 = COLORS.dropItem
-            item.TextColor3 = COLORS.text
-            item.Font = Enum.Font.Gotham
-            item.TextSize = 13
-            item.Text = name
-            item.BorderSizePixel = 0
-            item.ZIndex = 101
-            item.Parent = dropFrame
-            Instance.new("UICorner", item).CornerRadius = UDim.new(0,5)
-
-            item.MouseButton1Click:Connect(function()
-                chosenName = name
-                selBtn.Text = name.." ▾"
-                dropFrame:Destroy()
-                dropFrame = nil
-                dropOpen = false
-            end)
-        end
-    end)
-
-    -- Close dropdown if clicking elsewhere
-    UserInputService.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and dropOpen and dropFrame then
-            task.wait()
-            if dropFrame and dropOpen then
-                dropFrame:Destroy()
-                dropFrame = nil
-                dropOpen = false
+                item.MouseEnter:Connect(function()
+                    TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = COLORS.dropHover}):Play()
+                end)
+                item.MouseLeave:Connect(function()
+                    TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = COLORS.dropItem}):Play()
+                end)
+                item.MouseButton1Click:Connect(function()
+                    chosenName = name
+                    closeDropdown()
+                end)
             end
         end
+
+        -- Animate open — expand outer frame and dropList
+        dropList.Visible = true
+        TweenService:Create(dropList, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {Size = UDim2.new(1,-20,0,totalH)}):Play()
+        TweenService:Create(outer, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {Size = UDim2.new(1,0,0,50 + totalH + 6)}):Play()
+    end
+
+    selBtn.MouseButton1Click:Connect(function()
+        if dropOpen then closeDropdown()
+        else openDropdown() end
     end)
 
-    return wrap, function() return chosenName end
+    return outer, function() return chosenName end
 end
 
 -- =====================
@@ -764,11 +775,10 @@ makeInput(worldContent, "FOV", 70, function(v) Camera.FieldOfView = v end)
 makeSection(worldContent, "FPS")
 makeInput(worldContent, "FPS Cap", 144, function(v) pcall(function() setfpscap(v) end) end)
 
--- PLAYER TAB — single picker, two action buttons
+-- PLAYER TAB
 local playerContent = newTab("👤 Player")
 makeSection(playerContent, "Select a Player")
 local _, getTarget = makePlayerPicker(playerContent)
-
 makeSection(playerContent, "Actions")
 makeButton(playerContent, "🚀 Teleport to Player", function()
     local t = getTarget()
@@ -778,25 +788,24 @@ makeButton(playerContent, "👁 Spectate / Stop", function()
     local t = getTarget()
     if t then spectatePlayer(t) else notify("Spectate","Pick a player first!") end
 end)
-
 makeSection(playerContent, "Server")
 makeButton(playerContent, "🔄 Rejoin Server", function() rejoin() end)
 
--- COMMANDS TAB — click to copy
+-- COMMANDS TAB
 local cmdsContent = newTab("💬 Cmds")
-makeSection(cmdsContent, "Click a command to copy it")
+makeSection(cmdsContent, "Click to copy")
 
 local cmdList = {
-    {"!fly",        "Toggle fly mode"},
-    {"!speed",      "Toggle speed hack"},
-    {"!jump",       "Toggle infinite jump"},
-    {"!afk",        "Toggle anti-AFK"},
-    {"!bright",     "Toggle fullbright"},
-    {"!esp",        "Toggle ESP"},
-    {"!noclip",     "Toggle noclip"},
-    {"!rejoin",     "Rejoin the server"},
-    {"!tp [name]",  "Teleport to player"},
-    {"!spec [name]","Spectate a player"},
+    {"!fly",         "Toggle fly mode"},
+    {"!speed",       "Toggle speed hack"},
+    {"!jump",        "Toggle infinite jump"},
+    {"!afk",         "Toggle anti-AFK"},
+    {"!bright",      "Toggle fullbright"},
+    {"!esp",         "Toggle ESP"},
+    {"!noclip",      "Toggle noclip"},
+    {"!rejoin",      "Rejoin the server"},
+    {"!tp [name]",   "Teleport to player"},
+    {"!spec [name]", "Spectate a player"},
 }
 
 for _, c in pairs(cmdList) do
@@ -809,7 +818,7 @@ for _, c in pairs(cmdList) do
     Instance.new("UICorner", row).CornerRadius = UDim.new(0,8)
 
     local cmdLbl = Instance.new("TextLabel")
-    cmdLbl.Size = UDim2.new(1,-10,0,20)
+    cmdLbl.Size = UDim2.new(1,-60,0,20)
     cmdLbl.Position = UDim2.new(0,10,0,4)
     cmdLbl.BackgroundTransparency = 1
     cmdLbl.TextColor3 = COLORS.cmdColor
@@ -831,8 +840,8 @@ for _, c in pairs(cmdList) do
     descLbl.Parent = row
 
     local copyLbl = Instance.new("TextLabel")
-    copyLbl.Size = UDim2.new(0,45,1,0)
-    copyLbl.Position = UDim2.new(1,-50,0,0)
+    copyLbl.Size = UDim2.new(0,48,1,0)
+    copyLbl.Position = UDim2.new(1,-52,0,0)
     copyLbl.BackgroundTransparency = 1
     copyLbl.TextColor3 = COLORS.subtext
     copyLbl.Font = Enum.Font.Gotham
@@ -842,18 +851,15 @@ for _, c in pairs(cmdList) do
 
     local cmdText = c[1]
     row.MouseButton1Click:Connect(function()
-        -- Copy to clipboard
         pcall(function() setclipboard(cmdText) end)
-        -- Visual feedback
         local orig = cmdLbl.TextColor3
         cmdLbl.TextColor3 = COLORS.switchOn
-        copyLbl.Text = "✓ copied"
-        task.wait(1)
+        copyLbl.Text = "✓ copied!"
+        task.wait(1.2)
         cmdLbl.TextColor3 = orig
         copyLbl.Text = "📋 copy"
     end)
 
-    -- Hover effect
     row.MouseEnter:Connect(function()
         TweenService:Create(row, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(42,42,60)}):Play()
     end)
@@ -862,10 +868,10 @@ for _, c in pairs(cmdList) do
     end)
 end
 
--- Start on move tab
+-- Start on Move tab
 switchTab("🏃 Move")
 
-print("[Universal Script] Loaded! Click commands tab to copy chat commands.")
+print("[Universal Script] Loaded!")
 
 end)
 
