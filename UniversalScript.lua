@@ -921,18 +921,21 @@ local function makePlayerPicker(parent)
     dropScroll.Position = UDim2.new(0,10,0,50)
     dropScroll.BackgroundColor3 = COLORS.drop
     dropScroll.BorderSizePixel = 0
-    dropScroll.ScrollBarThickness = 3
-    dropScroll.ScrollBarImageColor3 = Color3.fromRGB(100,100,140)
-    dropScroll.CanvasSize = UDim2.new(0,0,0,0)
-    dropScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    dropScroll.ScrollBarThickness = 5
+    dropScroll.ScrollBarImageColor3 = Color3.fromRGB(120,120,160)
+    dropScroll.CanvasSize = UDim2.new(0,0,0,0) -- set manually below
+    dropScroll.AutomaticCanvasSize = Enum.AutomaticSize.None -- OFF to avoid conflict
     dropScroll.ClipsDescendants = true
+    dropScroll.ScrollingEnabled = true
     dropScroll.Visible = false
     dropScroll.Parent = outer
     Instance.new("UICorner", dropScroll).CornerRadius = UDim.new(0,6)
 
     local dl = Instance.new("UIListLayout")
     dl.Padding = UDim.new(0,3)
+    dl.SortOrder = Enum.SortOrder.LayoutOrder
     dl.Parent = dropScroll
+
     local dp = Instance.new("UIPadding")
     dp.PaddingTop = UDim.new(0,4)
     dp.PaddingBottom = UDim.new(0,4)
@@ -951,16 +954,19 @@ local function makePlayerPicker(parent)
 
     local function openDropdown()
         dropOpen = true
+
+        -- clear old items
         for _, child in pairs(dropScroll:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
         end
+
         local playerList = {}
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then table.insert(playerList, p.Name) end
         end
-        local actualH = #playerList > 0
-            and math.min(#playerList, MAX_VISIBLE) * (ITEM_H+3) + 8
-            or 36
+
+        local PAD = 8 -- top + bottom padding
+        local SPACING = 3
 
         if #playerList == 0 then
             local none = Instance.new("TextLabel")
@@ -971,8 +977,10 @@ local function makePlayerPicker(parent)
             none.TextSize = 12
             none.Text = "No other players"
             none.Parent = dropScroll
+            -- canvas = one item
+            dropScroll.CanvasSize = UDim2.new(0,0,0,28 + PAD)
         else
-            for _, name in pairs(playerList) do
+            for i, name in ipairs(playerList) do
                 local item = Instance.new("TextButton")
                 item.Size = UDim2.new(1,0,0,ITEM_H)
                 item.BackgroundColor3 = COLORS.dropItem
@@ -981,8 +989,10 @@ local function makePlayerPicker(parent)
                 item.TextSize = 13
                 item.Text = name
                 item.BorderSizePixel = 0
+                item.LayoutOrder = i
                 item.Parent = dropScroll
                 Instance.new("UICorner", item).CornerRadius = UDim.new(0,5)
+
                 item.MouseEnter:Connect(function()
                     TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = COLORS.dropHover}):Play()
                 end)
@@ -994,10 +1004,20 @@ local function makePlayerPicker(parent)
                     closeDropdown()
                 end)
             end
+
+            -- Total canvas height = all items + spacing + padding
+            local totalCanvas = #playerList * (ITEM_H + SPACING) + PAD
+            dropScroll.CanvasSize = UDim2.new(0, 0, 0, totalCanvas)
         end
+
+        -- Visible height = capped at MAX_VISIBLE items
+        local visibleH = math.min(#playerList, MAX_VISIBLE) * (ITEM_H + SPACING) + PAD
+        if #playerList == 0 then visibleH = 36 end
+
+        dropScroll.CanvasPosition = Vector2.new(0, 0)
         dropScroll.Visible = true
-        TweenService:Create(dropScroll, TweenInfo.new(0.15), {Size = UDim2.new(1,-20,0,actualH)}):Play()
-        TweenService:Create(outer, TweenInfo.new(0.15), {Size = UDim2.new(1,0,0,50+actualH+6)}):Play()
+        TweenService:Create(dropScroll, TweenInfo.new(0.15), {Size = UDim2.new(1,-20,0,visibleH)}):Play()
+        TweenService:Create(outer, TweenInfo.new(0.15), {Size = UDim2.new(1,0,0,50+visibleH+6)}):Play()
     end
 
     selBtn.MouseButton1Click:Connect(function()
