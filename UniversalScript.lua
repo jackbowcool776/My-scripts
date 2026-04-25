@@ -1,5 +1,5 @@
 -- Universal Script by Claude
--- Fixed player picker: inline dropdown pushes content down
+-- Scrollable dropdown, fly disables on death, !fly quick tab
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -52,6 +52,12 @@ local function notify(title, text)
     end)
 end
 
+-- Forward declare so chat commands can reference it
+local flyQuickTab = nil
+local flySpeedInput = nil
+local flyToggleVisual = nil
+local switchTab = nil
+
 -- =====================
 -- FEATURES
 -- =====================
@@ -62,50 +68,85 @@ local function toggleSpeed()
     notify("Speed", States.Speed and "ON" or "OFF")
 end
 
-local function toggleFly()
-    States.Fly = not States.Fly
+local function disableFly()
+    if not States.Fly then return end
+    States.Fly = false
     local root = getRootPart()
     local hum = getHumanoid()
-    if not root or not hum then return end
-    if States.Fly then
-        hum.PlatformStand = true
-        local bv = Instance.new("BodyVelocity")
-        bv.Name = "FlyVelocity"
-        bv.Velocity = Vector3.new(0,0,0)
-        bv.MaxForce = Vector3.new(1e9,1e9,1e9)
-        bv.Parent = root
-        local bg = Instance.new("BodyGyro")
-        bg.Name = "FlyGyro"
-        bg.MaxTorque = Vector3.new(1e9,1e9,1e9)
-        bg.P = 1e4
-        bg.Parent = root
-        FlyConnection = RunService.Heartbeat:Connect(function()
-            if not States.Fly then
-                pcall(function() bv:Destroy() end)
-                pcall(function() bg:Destroy() end)
-                FlyConnection:Disconnect() FlyConnection = nil
-                return
-            end
-            local cam = workspace.CurrentCamera
-            local dir = Vector3.new(0,0,0)
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
-            bv.Velocity = dir * FlySpeed
-            bg.CFrame = cam.CFrame
-        end)
-    else
-        hum.PlatformStand = false
-        if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+    if hum then hum.PlatformStand = false end
+    if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+    if root then
         for _, v in pairs(root:GetChildren()) do
             if v.Name == "FlyVelocity" or v.Name == "FlyGyro" then pcall(function() v:Destroy() end) end
         end
     end
+    if flyToggleVisual then flyToggleVisual(false) end
+end
+
+local function enableFly()
+    if States.Fly then return end
+    States.Fly = true
+    local root = getRootPart()
+    local hum = getHumanoid()
+    if not root or not hum then return end
+    hum.PlatformStand = true
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "FlyVelocity"
+    bv.Velocity = Vector3.new(0,0,0)
+    bv.MaxForce = Vector3.new(1e9,1e9,1e9)
+    bv.Parent = root
+    local bg = Instance.new("BodyGyro")
+    bg.Name = "FlyGyro"
+    bg.MaxTorque = Vector3.new(1e9,1e9,1e9)
+    bg.P = 1e4
+    bg.Parent = root
+    FlyConnection = RunService.Heartbeat:Connect(function()
+        if not States.Fly then
+            pcall(function() bv:Destroy() end)
+            pcall(function() bg:Destroy() end)
+            FlyConnection:Disconnect() FlyConnection = nil
+            return
+        end
+        local cam = workspace.CurrentCamera
+        local dir = Vector3.new(0,0,0)
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+        bv.Velocity = dir * FlySpeed
+        bg.CFrame = cam.CFrame
+    end)
+    if flyToggleVisual then flyToggleVisual(true) end
+end
+
+local function toggleFly()
+    if States.Fly then disableFly() else enableFly() end
     notify("Fly", States.Fly and "ON" or "OFF")
 end
+
+-- Disable fly on death
+local function setupDeathDetection(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        if States.Fly then
+            disableFly()
+            notify("Fly", "Disabled (died)")
+        end
+    end)
+end
+
+setupDeathDetection(getCharacter())
+LocalPlayer.CharacterAdded:Connect(function(char)
+    setupDeathDetection(char)
+    -- Re-apply speed on respawn
+    task.wait(0.5)
+    if States.Speed then
+        local h = getHumanoid()
+        if h then h.WalkSpeed = SpeedValue end
+    end
+end)
 
 UserInputService.JumpRequest:Connect(function()
     if States.InfiniteJump then
@@ -254,22 +295,6 @@ local function rejoin()
     end)
 end
 
-LocalPlayer.Chatted:Connect(function(msg)
-    local args = string.lower(msg):split(" ")
-    local cmd = args[1]
-    if cmd == "!fly" then toggleFly()
-    elseif cmd == "!speed" then toggleSpeed()
-    elseif cmd == "!jump" then toggleInfiniteJump()
-    elseif cmd == "!afk" then toggleAntiAFK()
-    elseif cmd == "!bright" then toggleFullbright()
-    elseif cmd == "!esp" then toggleESP()
-    elseif cmd == "!noclip" then toggleNoclip()
-    elseif cmd == "!rejoin" then rejoin()
-    elseif cmd == "!tp" and args[2] then teleportToPlayer(args[2])
-    elseif cmd == "!spec" and args[2] then spectatePlayer(args[2])
-    end
-end)
-
 -- =====================
 -- GUI
 -- =====================
@@ -288,6 +313,7 @@ local COLORS = {
     switchOff = Color3.fromRGB(55,55,72),
     switchOn  = Color3.fromRGB(45,140,75),
     accent    = Color3.fromRGB(70,110,210),
+    flyAccent = Color3.fromRGB(200,120,30),
     text      = Color3.fromRGB(220,220,220),
     subtext   = Color3.fromRGB(140,140,170),
     cmdColor  = Color3.fromRGB(100,180,255),
@@ -311,7 +337,6 @@ Main.ClipsDescendants = true
 Main.Parent = gui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
--- Title bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT)
 TitleBar.BackgroundColor3 = COLORS.titlebar
@@ -345,7 +370,6 @@ OpenBtn.ZIndex = 12
 OpenBtn.Parent = TitleBar
 Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(0, 6)
 
--- Tab bar
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, 0, 0, 34)
 TabBar.Position = UDim2.new(0, 0, 0, CLOSED_HEIGHT)
@@ -364,7 +388,6 @@ local TabPad = Instance.new("UIPadding")
 TabPad.PaddingLeft = UDim.new(0, 6)
 TabPad.Parent = TabBar
 
--- Scroll area
 local ScrollArea = Instance.new("ScrollingFrame")
 ScrollArea.Size = UDim2.new(1, 0, 1, -(CLOSED_HEIGHT + 34))
 ScrollArea.Position = UDim2.new(0, 0, 0, CLOSED_HEIGHT + 34)
@@ -377,7 +400,6 @@ ScrollArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ScrollArea.ZIndex = 8
 ScrollArea.Parent = Main
 
--- Open/close
 OpenBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
@@ -385,7 +407,6 @@ OpenBtn.MouseButton1Click:Connect(function()
     OpenBtn.Text = isOpen and "▼" or "▲"
 end)
 
--- Dragging
 local dragging, dragStart, frameStart = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or
@@ -417,22 +438,22 @@ end)
 -- =====================
 local tabData = {}
 
-local function switchTab(name)
+switchTab = function(name)
     for tname, tinfo in pairs(tabData) do
         tinfo.content.Visible = tname == name
-        tinfo.btn.BackgroundColor3 = tname == name and COLORS.accent or Color3.fromRGB(35,35,50)
+        tinfo.btn.BackgroundColor3 = tname == name and (tinfo.color or COLORS.accent) or Color3.fromRGB(35,35,50)
         tinfo.btn.TextColor3 = tname == name and Color3.fromRGB(255,255,255) or COLORS.subtext
     end
     ScrollArea.CanvasPosition = Vector2.new(0,0)
 end
 
-local function newTab(name)
+local function newTab(name, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 58, 0, 26)
+    btn.Size = UDim2.new(0, 52, 0, 26)
     btn.BackgroundColor3 = Color3.fromRGB(35,35,50)
     btn.TextColor3 = COLORS.subtext
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
+    btn.TextSize = 9
     btn.Text = name
     btn.BorderSizePixel = 0
     btn.ZIndex = 10
@@ -459,7 +480,7 @@ local function newTab(name)
     cp.PaddingBottom = UDim.new(0,8)
     cp.Parent = content
 
-    tabData[name] = {btn=btn, content=content}
+    tabData[name] = {btn=btn, content=content, color=color or COLORS.accent}
     btn.MouseButton1Click:Connect(function() switchTab(name) end)
     return content
 end
@@ -519,10 +540,10 @@ local function makeInput(parent, label, default, onChange)
         if v then lbl.Text = label..": "..v onChange(v)
         else box.Text = tostring(default) end
     end)
-    return wrap
+    return wrap, lbl, box
 end
 
-local function makeToggle(parent, label, toggleFn, stateKey)
+local function makeToggle(parent, label, toggleFn, stateKey, color)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1,0,0,36)
     row.BackgroundColor3 = COLORS.row
@@ -557,12 +578,14 @@ local function makeToggle(parent, label, toggleFn, stateKey)
     knob.Parent = bg
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
 
+    local onColor = color or COLORS.switchOn
+
     local function updateVisual(on)
         TweenService:Create(knob, TweenInfo.new(0.15),
             {Position = on and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9),
              BackgroundColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(200,200,200)}):Play()
         TweenService:Create(bg, TweenInfo.new(0.15),
-            {BackgroundColor3 = on and COLORS.switchOn or COLORS.switchOff}):Play()
+            {BackgroundColor3 = on and onColor or COLORS.switchOff}):Play()
     end
 
     if stateKey then switchRefs[stateKey] = updateVisual end
@@ -576,13 +599,13 @@ local function makeToggle(parent, label, toggleFn, stateKey)
         toggleFn()
         if stateKey then updateVisual(States[stateKey]) end
     end)
-    return row
+    return row, function(on) updateVisual(on) end
 end
 
-local function makeButton(parent, label, onClick)
+local function makeButton(parent, label, onClick, color)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1,0,0,34)
-    btn.BackgroundColor3 = COLORS.accent
+    btn.BackgroundColor3 = color or COLORS.accent
     btn.TextColor3 = Color3.fromRGB(255,255,255)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 13
@@ -595,14 +618,15 @@ local function makeButton(parent, label, onClick)
 end
 
 -- =====================
--- PLAYER PICKER
--- Inline dropdown: expands the frame and pushes content below it down
+-- PLAYER PICKER (scrollable)
 -- =====================
 local function makePlayerPicker(parent)
     local chosenName = nil
     local dropOpen = false
+    local MAX_VISIBLE = 5
+    local ITEM_H = 28
+    local DROP_MAX_H = MAX_VISIBLE * (ITEM_H + 3) + 8
 
-    -- Outer container - grows when dropdown opens
     local outer = Instance.new("Frame")
     outer.Name = "PlayerPicker"
     outer.Size = UDim2.new(1,0,0,50)
@@ -635,56 +659,61 @@ local function makePlayerPicker(parent)
     selBtn.Parent = outer
     Instance.new("UICorner", selBtn).CornerRadius = UDim.new(0,5)
 
-    -- Dropdown list frame — sits BELOW the button, inside outer
-    local dropList = Instance.new("Frame")
-    dropList.Name = "DropList"
-    dropList.Size = UDim2.new(1,-20,0,0)
-    dropList.Position = UDim2.new(0,10,0,50)
-    dropList.BackgroundColor3 = COLORS.drop
-    dropList.BorderSizePixel = 0
-    dropList.ClipsDescendants = true
-    dropList.Visible = false
-    dropList.Parent = outer
-    Instance.new("UICorner", dropList).CornerRadius = UDim.new(0,6)
+    -- Scrolling dropdown
+    local dropScroll = Instance.new("ScrollingFrame")
+    dropScroll.Name = "DropScroll"
+    dropScroll.Size = UDim2.new(1,-20,0,0)
+    dropScroll.Position = UDim2.new(0,10,0,50)
+    dropScroll.BackgroundColor3 = COLORS.drop
+    dropScroll.BorderSizePixel = 0
+    dropScroll.ScrollBarThickness = 3
+    dropScroll.ScrollBarImageColor3 = Color3.fromRGB(100,100,140)
+    dropScroll.CanvasSize = UDim2.new(0,0,0,0)
+    dropScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    dropScroll.ClipsDescendants = true
+    dropScroll.Visible = false
+    dropScroll.Parent = outer
+    Instance.new("UICorner", dropScroll).CornerRadius = UDim.new(0,6)
 
     local dropLayout = Instance.new("UIListLayout")
     dropLayout.Padding = UDim.new(0,3)
-    dropLayout.Parent = dropList
+    dropLayout.Parent = dropScroll
 
     local dropPad = Instance.new("UIPadding")
     dropPad.PaddingTop = UDim.new(0,4)
     dropPad.PaddingBottom = UDim.new(0,4)
     dropPad.PaddingLeft = UDim.new(0,4)
     dropPad.PaddingRight = UDim.new(0,4)
-    dropPad.Parent = dropList
+    dropPad.Parent = dropScroll
 
     local function closeDropdown()
         dropOpen = false
         selBtn.Text = (chosenName or "Click to pick player").." ▾"
-        -- Animate closed
-        TweenService:Create(dropList, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        TweenService:Create(dropScroll, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
             {Size = UDim2.new(1,-20,0,0)}):Play()
         TweenService:Create(outer, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
             {Size = UDim2.new(1,0,0,50)}):Play()
         task.wait(0.15)
-        dropList.Visible = false
+        dropScroll.Visible = false
     end
 
     local function openDropdown()
         dropOpen = true
+
         -- Clear old items
-        for _, child in pairs(dropList:GetChildren()) do
+        for _, child in pairs(dropScroll:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
         end
 
-        -- Rebuild player list fresh
         local playerList = {}
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then table.insert(playerList, p.Name) end
         end
 
-        local itemH = 28
-        local totalH = #playerList > 0 and math.min(#playerList, 5) * (itemH+3) + 8 or 32
+        -- Height: capped at MAX_VISIBLE items, scrolls if more
+        local actualH = #playerList > 0
+            and math.min(#playerList, MAX_VISIBLE) * (ITEM_H + 3) + 8
+            or 36
 
         if #playerList == 0 then
             local none = Instance.new("TextLabel")
@@ -694,18 +723,18 @@ local function makePlayerPicker(parent)
             none.Font = Enum.Font.Gotham
             none.TextSize = 12
             none.Text = "No other players"
-            none.Parent = dropList
+            none.Parent = dropScroll
         else
             for _, name in pairs(playerList) do
                 local item = Instance.new("TextButton")
-                item.Size = UDim2.new(1,0,0,itemH)
+                item.Size = UDim2.new(1,0,0,ITEM_H)
                 item.BackgroundColor3 = COLORS.dropItem
                 item.TextColor3 = COLORS.text
                 item.Font = Enum.Font.Gotham
                 item.TextSize = 13
                 item.Text = name
                 item.BorderSizePixel = 0
-                item.Parent = dropList
+                item.Parent = dropScroll
                 Instance.new("UICorner", item).CornerRadius = UDim.new(0,5)
 
                 item.MouseEnter:Connect(function()
@@ -721,17 +750,15 @@ local function makePlayerPicker(parent)
             end
         end
 
-        -- Animate open — expand outer frame and dropList
-        dropList.Visible = true
-        TweenService:Create(dropList, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(1,-20,0,totalH)}):Play()
+        dropScroll.Visible = true
+        TweenService:Create(dropScroll, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {Size = UDim2.new(1,-20,0,actualH)}):Play()
         TweenService:Create(outer, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(1,0,0,50 + totalH + 6)}):Play()
+            {Size = UDim2.new(1,0,0,50 + actualH + 6)}):Play()
     end
 
     selBtn.MouseButton1Click:Connect(function()
-        if dropOpen then closeDropdown()
-        else openDropdown() end
+        if dropOpen then closeDropdown() else openDropdown() end
     end)
 
     return outer, function() return chosenName end
@@ -741,7 +768,40 @@ end
 -- BUILD TABS
 -- =====================
 
--- MOVE TAB
+-- 🚀 FLY QUICK TAB (orange accent, opened by !fly chat command)
+local flyContent = newTab("🚀 Fly", COLORS.flyAccent)
+makeSection(flyContent, "Quick Fly Controls")
+
+local _, flyToggleRow = makeToggle(flyContent, "Fly", toggleFly, "Fly", Color3.fromRGB(220,140,30))
+flyToggleVisual = flyToggleRow
+
+makeSection(flyContent, "Fly Speed")
+makeInput(flyContent, "Fly Speed", 50, function(v)
+    FlySpeed = v
+end)
+
+local bigFlyBtn = makeButton(flyContent, "🚀 Toggle Fly", function()
+    toggleFly()
+    if flyToggleVisual then flyToggleVisual(States.Fly) end
+end, States.Fly and Color3.fromRGB(45,140,75) or Color3.fromRGB(180,60,60))
+
+-- Update big button color when toggled
+local origFlyToggle = toggleFly
+-- We'll update the button color inside the toggle visual update
+
+makeSection(flyContent, "Note")
+local noteLbl = Instance.new("TextLabel")
+noteLbl.Size = UDim2.new(1,0,0,30)
+noteLbl.BackgroundTransparency = 1
+noteLbl.TextColor3 = COLORS.subtext
+noteLbl.Font = Enum.Font.Gotham
+noteLbl.TextSize = 11
+noteLbl.TextWrapped = true
+noteLbl.TextXAlignment = Enum.TextXAlignment.Left
+noteLbl.Text = "Fly auto-disables on death. Use W/A/S/D + Space/Ctrl to fly."
+noteLbl.Parent = flyContent
+
+-- 🏃 MOVE TAB
 local moveContent = newTab("🏃 Move")
 makeSection(moveContent, "Walk Speed")
 makeInput(moveContent, "Walk Speed", 50, function(v)
@@ -761,7 +821,7 @@ makeSection(moveContent, "Other")
 makeToggle(moveContent, "Noclip", toggleNoclip, "Noclip")
 makeToggle(moveContent, "Anti-AFK", toggleAntiAFK, "AntiAFK")
 
--- WORLD TAB
+-- 🌍 WORLD TAB
 local worldContent = newTab("🌍 World")
 makeSection(worldContent, "Visuals")
 makeToggle(worldContent, "Fullbright", toggleFullbright, "Fullbright")
@@ -775,7 +835,7 @@ makeInput(worldContent, "FOV", 70, function(v) Camera.FieldOfView = v end)
 makeSection(worldContent, "FPS")
 makeInput(worldContent, "FPS Cap", 144, function(v) pcall(function() setfpscap(v) end) end)
 
--- PLAYER TAB
+-- 👤 PLAYER TAB
 local playerContent = newTab("👤 Player")
 makeSection(playerContent, "Select a Player")
 local _, getTarget = makePlayerPicker(playerContent)
@@ -791,12 +851,12 @@ end)
 makeSection(playerContent, "Server")
 makeButton(playerContent, "🔄 Rejoin Server", function() rejoin() end)
 
--- COMMANDS TAB
+-- 💬 COMMANDS TAB
 local cmdsContent = newTab("💬 Cmds")
 makeSection(cmdsContent, "Click to copy")
 
 local cmdList = {
-    {"!fly",         "Toggle fly mode"},
+    {"!fly",         "Open fly quick tab"},
     {"!speed",       "Toggle speed hack"},
     {"!jump",        "Toggle infinite jump"},
     {"!afk",         "Toggle anti-AFK"},
@@ -868,10 +928,40 @@ for _, c in pairs(cmdList) do
     end)
 end
 
+-- =====================
+-- CHAT COMMANDS
+-- !fly opens the fly quick tab and opens the GUI
+-- =====================
+LocalPlayer.Chatted:Connect(function(msg)
+    local args = string.lower(msg):split(" ")
+    local cmd = args[1]
+    if cmd == "!fly" then
+        -- Open gui if closed
+        if not isOpen then
+            isOpen = true
+            TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
+                {Size = UDim2.new(0, WIDTH, 0, OPEN_HEIGHT)}):Play()
+            OpenBtn.Text = "▼"
+        end
+        switchTab("🚀 Fly")
+        toggleFly()
+        if flyToggleVisual then flyToggleVisual(States.Fly) end
+    elseif cmd == "!speed" then toggleSpeed()
+    elseif cmd == "!jump" then toggleInfiniteJump()
+    elseif cmd == "!afk" then toggleAntiAFK()
+    elseif cmd == "!bright" then toggleFullbright()
+    elseif cmd == "!esp" then toggleESP()
+    elseif cmd == "!noclip" then toggleNoclip()
+    elseif cmd == "!rejoin" then rejoin()
+    elseif cmd == "!tp" and args[2] then teleportToPlayer(args[2])
+    elseif cmd == "!spec" and args[2] then spectatePlayer(args[2])
+    end
+end)
+
 -- Start on Move tab
 switchTab("🏃 Move")
 
-print("[Universal Script] Loaded!")
+print("[Universal Script] Loaded! Type !fly in chat to open fly quick tab.")
 
 end)
 
