@@ -179,17 +179,27 @@ end
 setupDeath(getCharacter())
 LocalPlayer.CharacterAdded:Connect(function(char)
     setupDeath(char)
-    -- Clear paused screen when respawning
-    clearGameplayPaused()
-    task.delay(0.5, clearGameplayPaused)
 
-    -- Disable fly when character respawns
+    -- Wait for character to be fully loaded before doing anything
+    char:WaitForChild("HumanoidRootPart")
+    char:WaitForChild("Humanoid")
+
+    -- Disable fly properly now that character exists
     if States.Fly then
-        task.wait(0.1)
-        disableFly()
+        States.Fly = false
+        if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+        -- Clean up body movers from old character (they're gone with old char anyway)
+        local hum = getHumanoid()
+        if hum then hum.PlatformStand = false end
         if switchRefs["Fly"] then switchRefs["Fly"](false) end
+        if updateFlyWindow then updateFlyWindow(false) end
         notify("Fly", "Disabled on respawn")
     end
+
+    -- Clear paused screen when respawning
+    clearGameplayPaused()
+    task.delay(0.3, clearGameplayPaused)
+
     task.wait(0.5)
     if States.Speed then
         local h = getHumanoid()
@@ -1314,35 +1324,65 @@ makeToggle(worldContent, "ESP", toggleESP, "ESP")
 makeToggle(worldContent, "No Pause When Flying", function()
     States.NoStreamPause = not States.NoStreamPause
     if States.NoStreamPause then
+        -- Event-driven: fires only when something is added to CoreGui
+        -- much cheaper than polling every frame
         if not _G.StreamConn then
-            local lastCheck = 0
-            _G.StreamConn = RunService.Heartbeat:Connect(function()
-                if not States.NoStreamPause then
-                    _G.StreamConn:Disconnect()
-                    _G.StreamConn = nil
-                    return
-                end
-                -- Only run every 0.2 seconds, not every frame
-                local now = tick()
-                if now - lastCheck < 0.2 then return end
-                lastCheck = now
-
+            local coreGui = game:GetService("CoreGui")
+            _G.StreamConn = coreGui.DescendantAdded:Connect(function(desc)
+                if not States.NoStreamPause then return end
+                -- Only act if it looks like the pause screen appeared
                 pcall(function()
-                    -- Keep replication focus on character
-                    local root = getRootPart()
-                    if root then LocalPlayer.ReplicationFocus = root end
-                    -- Use cached reference to hide pause screen
-                    local screen = findPauseScreen()
-                    if screen and screen.Enabled then
-                        screen.Enabled = false
+                    if desc:IsA("TextLabel") and (
+                        desc.Text == "Gameplay Paused" or
+                        desc.Text:lower():find("gameplay paused") or
+                        desc.Text:lower():find("content loads")
+                    ) then
+                        local obj = desc
+                        while obj and not obj:IsA("ScreenGui") do
+                            obj = obj.Parent
+                        end
+                        if obj and obj:IsA("ScreenGui") then
+                            cachedPauseScreen = obj
+                            task.wait()
+                            obj.Enabled = false
+                        end
                     end
                 end)
             end)
+            -- Also set replication focus once
+            pcall(function()
+                local root = getRootPart()
+                if root then LocalPlayer.ReplicationFocus = root end
+            end)
+            -- Update replication focus on heartbeat but very infrequently
+            if not _G.FocusConn then
+                local lastFocus = 0
+                _G.FocusConn = RunService.Heartbeat:Connect(function()
+                    if not States.NoStreamPause then
+                        _G.FocusConn:Disconnect()
+                        _G.FocusConn = nil
+                        return
+                    end
+                    local now = tick()
+                    if now - lastFocus < 1 then return end -- only once per second
+                    lastFocus = now
+                    pcall(function()
+                        local root = getRootPart()
+                        if root then LocalPlayer.ReplicationFocus = root end
+                    end)
+                end)
+            end
         end
+        -- Also hide it right now in case it's already showing
+        clearGameplayPaused()
     else
         if _G.StreamConn then
             _G.StreamConn:Disconnect()
             _G.StreamConn = nil
+        end
+        if _G.FocusConn then
+            _G.FocusConn:Disconnect()
+            _G.FocusConn = nil
         end
     end
     notify("No Pause", States.NoStreamPause and "ON" or "OFF")
