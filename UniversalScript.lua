@@ -1,3 +1,4 @@
+
 -- Universal Script by Claude
 -- Main hub + separate Fly System window
 
@@ -265,13 +266,34 @@ local function toggleNoclip()
     notify("Noclip", States.Noclip and "ON" or "OFF")
 end
 
-local function teleportToPlayer(name)
-    local target = Players:FindFirstChild(name)
-    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-        local root = getRootPart()
-        if root then root.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0) end
-        notify("Teleport", "Teleported to "..name)
-    else notify("Teleport", "Player not found!") end
+local function teleportToPlayer(query)
+    local queryLower = string.lower(query)
+    local matches = {}
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local displayLower = string.lower(p.DisplayName)
+            -- check if display name STARTS WITH the query
+            if string.sub(displayLower, 1, #queryLower) == queryLower then
+                table.insert(matches, p)
+            end
+        end
+    end
+
+    if #matches == 0 then
+        notify("Teleport", "No player found matching '"..query.."'")
+    elseif #matches > 1 then
+        notify("Teleport", "Be more specific! ("..#matches.." players match)")
+    else
+        local target = matches[1]
+        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local root = getRootPart()
+            if root then root.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0) end
+            notify("Teleport", "Teleported to "..target.DisplayName)
+        else
+            notify("Teleport", target.DisplayName.." has no character!")
+        end
+    end
 end
 
 local spectateConn = nil
@@ -1170,7 +1192,7 @@ local cmdList = {
     {"!rejoin",      "Rejoin same server"},
     {"!hop",         "Server hop to new server"},
     {"!reset",       "Reset your character"},
-    {"!tp [name]",   "Teleport to player"},
+    {"!to [name]",   "Teleport by display name"},
     {"!spec [name]", "Spectate a player"},
 }
 
@@ -1261,7 +1283,7 @@ LocalPlayer.Chatted:Connect(function(msg)
     elseif cmd == "!rejoin" then rejoin()
     elseif cmd == "!reset" then resetCharacter()
     elseif cmd == "!hop" then serverHop()
-    elseif cmd == "!tp" and args[2] then teleportToPlayer(args[2])
+    elseif cmd == "!to" and args[2] then teleportToPlayer(args[2])
     elseif cmd == "!spec" and args[2] then spectatePlayer(args[2])
     end
 end)
