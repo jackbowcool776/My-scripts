@@ -128,13 +128,19 @@ local function toggleFly()
     notify("Fly", States.Fly and "ON" or "OFF")
 end
 
-local function clearGameplayPaused()
+-- Cache the gameplay paused screen so we don't scan every frame
+local cachedPauseScreen = nil
+
+local function findPauseScreen()
+    if cachedPauseScreen and cachedPauseScreen.Parent then
+        return cachedPauseScreen
+    end
     pcall(function()
         local coreGui = game:GetService("CoreGui")
         for _, g in pairs(coreGui:GetDescendants()) do
             if g:IsA("TextLabel") and (
                 g.Text == "Gameplay Paused" or
-                g.Text:lower():find("gameplay") or
+                g.Text:lower():find("gameplay paused") or
                 g.Text:lower():find("content loads")
             ) then
                 local obj = g
@@ -142,12 +148,20 @@ local function clearGameplayPaused()
                     obj = obj.Parent
                 end
                 if obj and obj:IsA("ScreenGui") then
-                    obj.Enabled = false
-                end
-                if g.Parent and g.Parent:IsA("Frame") then
-                    g.Parent.Visible = false
+                    cachedPauseScreen = obj
+                    return
                 end
             end
+        end
+    end)
+    return cachedPauseScreen
+end
+
+local function clearGameplayPaused()
+    pcall(function()
+        local screen = findPauseScreen()
+        if screen then
+            screen.Enabled = false
         end
     end)
 end
@@ -1301,38 +1315,26 @@ makeToggle(worldContent, "No Pause When Flying", function()
     States.NoStreamPause = not States.NoStreamPause
     if States.NoStreamPause then
         if not _G.StreamConn then
+            local lastCheck = 0
             _G.StreamConn = RunService.Heartbeat:Connect(function()
                 if not States.NoStreamPause then
                     _G.StreamConn:Disconnect()
                     _G.StreamConn = nil
                     return
                 end
+                -- Only run every 0.2 seconds, not every frame
+                local now = tick()
+                if now - lastCheck < 0.2 then return end
+                lastCheck = now
+
                 pcall(function()
                     -- Keep replication focus on character
                     local root = getRootPart()
                     if root then LocalPlayer.ReplicationFocus = root end
-
-                    -- Target the actual Roblox "Gameplay Paused" core UI
-                    local coreGui = game:GetService("CoreGui")
-                    for _, g in pairs(coreGui:GetDescendants()) do
-                        if g:IsA("TextLabel") and (
-                            g.Text == "Gameplay Paused" or
-                            g.Text:lower():find("gameplay") or
-                            g.Text:lower():find("content loads")
-                        ) then
-                            -- Hide the parent ScreenGui
-                            local obj = g
-                            while obj and not obj:IsA("ScreenGui") do
-                                obj = obj.Parent
-                            end
-                            if obj and obj:IsA("ScreenGui") then
-                                obj.Enabled = false
-                            end
-                            -- Also just hide the frame directly
-                            if g.Parent and g.Parent:IsA("Frame") then
-                                g.Parent.Visible = false
-                            end
-                        end
+                    -- Use cached reference to hide pause screen
+                    local screen = findPauseScreen()
+                    if screen and screen.Enabled then
+                        screen.Enabled = false
                     end
                 end)
             end)
