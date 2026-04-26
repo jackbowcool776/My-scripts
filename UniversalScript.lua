@@ -30,7 +30,6 @@ repeat task.wait(0.1) until getCharacter() and getHumanoid() and getRootPart()
 local States = {
     Speed = false, Fly = false, InfiniteJump = false,
     AntiAFK = false, Fullbright = false, ESP = false, Noclip = false,
-    NoFallDamage = false,
 }
 
 local SpeedValue = 50
@@ -143,20 +142,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if States.Speed then
         local h = getHumanoid()
         if h then h.WalkSpeed = SpeedValue end
-    end
-    if States.NoFallDamage then
-        if _G.FallDmgConn then _G.FallDmgConn:Disconnect() end
-        _G.FallDmgConn = RunService.Heartbeat:Connect(function()
-            if not States.NoFallDamage then
-                _G.FallDmgConn:Disconnect()
-                _G.FallDmgConn = nil
-                return
-            end
-            local hum = getHumanoid()
-            if hum and hum.Health > 0 and hum.Health < hum.MaxHealth then
-                hum.Health = hum.MaxHealth
-            end
-        end)
     end
 end)
 
@@ -1043,32 +1028,6 @@ makeToggle(moveContent, "Infinite Jump", toggleInfiniteJump, "InfiniteJump")
 makeSection(moveContent, "Other")
 makeToggle(moveContent, "Noclip", toggleNoclip, "Noclip")
 makeToggle(moveContent, "Anti-AFK", toggleAntiAFK, "AntiAFK")
-makeToggle(moveContent, "No Fall Damage", function()
-    States.NoFallDamage = not States.NoFallDamage
-    if States.NoFallDamage then
-        -- NDS applies damage server-side so we cant block it
-        -- Instead we instantly heal back to max health every frame
-        if not _G.FallDmgConn then
-            _G.FallDmgConn = RunService.Heartbeat:Connect(function()
-                if not States.NoFallDamage then
-                    _G.FallDmgConn:Disconnect()
-                    _G.FallDmgConn = nil
-                    return
-                end
-                local hum = getHumanoid()
-                if hum and hum.Health > 0 and hum.Health < hum.MaxHealth then
-                    hum.Health = hum.MaxHealth
-                end
-            end)
-        end
-    else
-        if _G.FallDmgConn then
-            _G.FallDmgConn:Disconnect()
-            _G.FallDmgConn = nil
-        end
-    end
-    notify("No Fall Damage", States.NoFallDamage and "ON" or "OFF")
-end, "NoFallDamage")
 
 -- WORLD TAB
 local worldContent = newTab("🌍 World")
@@ -1110,7 +1069,8 @@ local cmdList = {
     {"!afk",         "Toggle anti-AFK"},
     {"!bright",      "Toggle fullbright"},
     {"!esp",         "Toggle ESP"},
-    {"!noclip",      "Toggle noclip"},
+    {"!noclip",      "Turn noclip ON"},
+    {"!unnoclip",    "Turn noclip OFF"},
     {"!rejoin",      "Rejoin the server"},
     {"!tp [name]",   "Teleport to player"},
     {"!spec [name]", "Spectate a player"},
@@ -1189,7 +1149,16 @@ LocalPlayer.Chatted:Connect(function(msg)
     elseif cmd == "!afk" then toggleAntiAFK()
     elseif cmd == "!bright" then toggleFullbright()
     elseif cmd == "!esp" then toggleESP()
-    elseif cmd == "!noclip" then toggleNoclip()
+    elseif cmd == "!noclip" then
+        if not States.Noclip then
+            toggleNoclip()
+            if switchRefs["Noclip"] then switchRefs["Noclip"](true) end
+        end
+    elseif cmd == "!unnoclip" then
+        if States.Noclip then
+            toggleNoclip()
+            if switchRefs["Noclip"] then switchRefs["Noclip"](false) end
+        end
     elseif cmd == "!rejoin" then rejoin()
     elseif cmd == "!tp" and args[2] then teleportToPlayer(args[2])
     elseif cmd == "!spec" and args[2] then spectatePlayer(args[2])
