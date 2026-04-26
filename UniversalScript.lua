@@ -1288,16 +1288,49 @@ makeButton(playerContent, "🚀 Teleport to Player", function()
     local t = getTarget()
     if t then teleportToPlayer(t) else notify("Teleport","Pick a player first!") end
 end)
-makeButton(playerContent, "👁 Spectate / Stop Spectate", function()
-    local t = getTarget()
+-- Spectate button - updates dynamically
+local spectateBtn = Instance.new("TextButton")
+spectateBtn.Size = UDim2.new(1,0,0,34)
+spectateBtn.BackgroundColor3 = COLORS.accent
+spectateBtn.TextColor3 = Color3.fromRGB(255,255,255)
+spectateBtn.Font = Enum.Font.GothamBold
+spectateBtn.TextSize = 13
+spectateBtn.Text = "👁 Spectate"
+spectateBtn.BorderSizePixel = 0
+spectateBtn.Parent = playerContent
+Instance.new("UICorner", spectateBtn).CornerRadius = UDim.new(0,8)
+
+local function updateSpectateBtn(isSpectating)
+    if isSpectating then
+        spectateBtn.Text = "🛑 Stop Spectate"
+        spectateBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
+    else
+        spectateBtn.Text = "👁 Spectate"
+        spectateBtn.BackgroundColor3 = COLORS.accent
+    end
+end
+
+spectateBtn.MouseButton1Click:Connect(function()
     if spectateConn then
         stopSpectate()
-    elseif t then
-        spectatePlayer(t)
+        updateSpectateBtn(false)
     else
-        notify("Spectate","Pick a player first!")
+        local t = getTarget()
+        if t then
+            spectatePlayer(t)
+            updateSpectateBtn(true)
+        else
+            notify("Spectate", "Pick a player first!")
+        end
     end
 end)
+
+-- Also reset button when player leaves mid-spectate
+local _origStopSpectate = stopSpectate
+stopSpectate = function()
+    _origStopSpectate()
+    updateSpectateBtn(false)
+end
 makeSection(playerContent, "Server")
 makeButton(playerContent, "🔄 Rejoin Same Server", function() rejoin() end)
 makeButton(playerContent, "🌐 Server Hop", function() serverHop() end, Color3.fromRGB(120,60,180))
