@@ -53,8 +53,9 @@ local function notify(title, text)
     end)
 end
 
--- forward declare fly UI updater
+-- forward declare fly UI updater and move tab fly box for syncing
 local updateFlyWindow = nil
+local moveTabFlyBox = nil
 
 -- =====================
 -- FEATURES
@@ -518,6 +519,10 @@ FlySpeedBox.FocusLost:Connect(function()
         FlySpeed = v
         FlySpeedBox.Text = tostring(v)
         FlyActualLabel.Text = "Actual: "..v.." studs/sec"
+        -- sync move tab box
+        if moveTabFlyBox then
+            moveTabFlyBox.Text = tostring(v)
+        end
     else
         FlySpeedBox.Text = tostring(FlySpeed)
     end
@@ -794,6 +799,7 @@ local function makeInput(parent, label, default, onChange)
         if v then lbl.Text = label..": "..v onChange(v)
         else box.Text = tostring(default) end
     end)
+    return box
 end
 
 local function makeToggle(parent, label, toggleFn, stateKey)
@@ -1032,7 +1038,14 @@ makeInput(moveContent, "Walk Speed", 50, function(v)
 end)
 makeToggle(moveContent, "Speed", toggleSpeed, "Speed")
 makeSection(moveContent, "Fly")
-makeInput(moveContent, "Fly Speed", 50, function(v) FlySpeed = v end)
+moveTabFlyBox = makeInput(moveContent, "Fly Speed", 50, function(v)
+    FlySpeed = v
+    -- sync fly window box
+    if FlySpeedBox then
+        FlySpeedBox.Text = tostring(v)
+        FlyActualLabel.Text = "Actual: "..v.." studs/sec"
+    end
+end)
 makeToggle(moveContent, "Fly", toggleFly, "Fly")
 makeSection(moveContent, "Jump")
 makeInput(moveContent, "Jump Power", 50, function(v)
