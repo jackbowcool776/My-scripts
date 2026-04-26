@@ -30,7 +30,6 @@ repeat task.wait(0.1) until getCharacter() and getHumanoid() and getRootPart()
 local States = {
     Speed = false, Fly = false, InfiniteJump = false,
     AntiAFK = false, Fullbright = false, ESP = false, Noclip = false,
-    NoStreamPause = false,
 }
 
 local SpeedValue = 50
@@ -128,77 +127,44 @@ local function toggleFly()
     notify("Fly", States.Fly and "ON" or "OFF")
 end
 
--- Cache the gameplay paused screen so we don't scan every frame
-local cachedPauseScreen = nil
+-- Fly keybind storage
+local flyKeybind = {} -- e.g. {"LeftShift", "F"}
 
-local function findPauseScreen()
-    if cachedPauseScreen and cachedPauseScreen.Parent then
-        return cachedPauseScreen
+local function checkFlyKeybind()
+    if #flyKeybind == 0 then return false end
+    for _, key in ipairs(flyKeybind) do
+        if not UserInputService:IsKeyDown(Enum.KeyCode[key]) then
+            return false
+        end
     end
-    pcall(function()
-        local coreGui = game:GetService("CoreGui")
-        for _, g in pairs(coreGui:GetDescendants()) do
-            if g:IsA("TextLabel") and (
-                g.Text == "Gameplay Paused" or
-                g.Text:lower():find("gameplay paused") or
-                g.Text:lower():find("content loads")
-            ) then
-                local obj = g
-                while obj and not obj:IsA("ScreenGui") do
-                    obj = obj.Parent
-                end
-                if obj and obj:IsA("ScreenGui") then
-                    cachedPauseScreen = obj
-                    return
-                end
-            end
-        end
-    end)
-    return cachedPauseScreen
+    return true
 end
 
-local function clearGameplayPaused()
-    pcall(function()
-        local screen = findPauseScreen()
-        if screen then
-            screen.Enabled = false
-        end
-    end)
-end
+-- Listen for fly keybind globally
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if #flyKeybind == 0 then return end
+    if checkFlyKeybind() then
+        toggleFly()
+        if switchRefs["Fly"] then switchRefs["Fly"](States.Fly) end
+        if updateFlyWindow then updateFlyWindow(States.Fly) end
+    end
+end)
 
--- Disable fly on respawn (not death)
-local function setupDeath(char)
-    local hum = char:WaitForChild("Humanoid")
-    hum.Died:Connect(function()
-        -- Clear gameplay paused screen after death
-        task.delay(0.1, clearGameplayPaused)
-        task.delay(0.5, clearGameplayPaused)
-        task.delay(1.0, clearGameplayPaused)
-    end)
-end
-setupDeath(getCharacter())
 LocalPlayer.CharacterAdded:Connect(function(char)
-    setupDeath(char)
-
-    -- Wait for character to be fully loaded before doing anything
     char:WaitForChild("HumanoidRootPart")
     char:WaitForChild("Humanoid")
 
-    -- Disable fly properly now that character exists
+    -- Disable fly on respawn
     if States.Fly then
         States.Fly = false
         if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
-        -- Clean up body movers from old character (they're gone with old char anyway)
         local hum = getHumanoid()
         if hum then hum.PlatformStand = false end
         if switchRefs["Fly"] then switchRefs["Fly"](false) end
         if updateFlyWindow then updateFlyWindow(false) end
         notify("Fly", "Disabled on respawn")
     end
-
-    -- Clear paused screen when respawning
-    clearGameplayPaused()
-    task.delay(0.3, clearGameplayPaused)
 
     task.wait(0.5)
     if States.Speed then
@@ -326,7 +292,6 @@ local function toggleNoclip()
 end
 
 local function teleportToPlayer(query)
-    -- lowercase but keep numbers intact
     local queryLower = string.lower(query)
     local matches = {}
 
@@ -334,10 +299,8 @@ local function teleportToPlayer(query)
         if p ~= LocalPlayer then
             local displayLower = string.lower(p.DisplayName)
             local userLower = string.lower(p.Name)
-            -- match if display name OR username starts with query
             if string.sub(displayLower, 1, #queryLower) == queryLower
             or string.sub(userLower, 1, #queryLower) == queryLower then
-                -- avoid duplicates if both display and username match
                 local already = false
                 for _, m in ipairs(matches) do
                     if m == p then already = true break end
@@ -355,12 +318,31 @@ local function teleportToPlayer(query)
         notify("Teleport", "Be more specific! ("..#matches.." players match)")
     else
         local target = matches[1]
-        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            local root = getRootPart()
-            if root then root.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0) end
-            notify("Teleport", "Teleported to "..target.DisplayName)
+        -- If character isn't loaded yet, wait up to 3 seconds for it
+        if not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+            notify("Teleport", "Waiting for "..target.DisplayName.."'s character...")
+            task.spawn(function()
+                local waited = 0
+                while waited < 3 do
+                    task.wait(0.2)
+                    waited = waited + 0.2
+                    if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                        local root = getRootPart()
+                        if root then
+                            root.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+                            notify("Teleport", "Teleported to "..target.DisplayName)
+                        end
+                        return
+                    end
+                end
+                notify("Teleport", target.DisplayName.." has no character — are they respawning?")
+            end)
         else
-            notify("Teleport", target.DisplayName.." has no character!")
+            local root = getRootPart()
+            if root then
+                root.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+                notify("Teleport", "Teleported to "..target.DisplayName)
+            end
         end
     end
 end
@@ -427,19 +409,11 @@ local function spectatePlayer(name)
     local function attachCamera()
         if not target or not target.Character then return end
         local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
-        local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
-        if not targetHum or not targetRoot then return end
-
-        -- Save original subject
+        if not targetHum then return end
         originalCameraSubject = Camera.CameraSubject
-
-        -- Use Roblox's built-in spectate by setting CameraSubject to their humanoid
-        -- This makes the camera follow them exactly like a real spectate
         Camera.CameraType = Enum.CameraType.Custom
         Camera.CameraSubject = targetHum
     end
-
-    attachCamera()
 
     -- Re-attach camera if subject gets lost (e.g. target respawns)
     spectateConn = RunService.Heartbeat:Connect(function()
@@ -458,7 +432,28 @@ local function spectatePlayer(name)
         end
     end)
 
-    notify("Spectate", "Spectating "..target.DisplayName)
+    -- If character isn't ready, wait for it
+    if not target.Character or not target.Character:FindFirstChildOfClass("Humanoid") then
+        notify("Spectate", "Waiting for "..target.DisplayName.."'s character...")
+        task.spawn(function()
+            local waited = 0
+            while waited < 5 do
+                task.wait(0.2)
+                waited = waited + 0.2
+                if target.Character and target.Character:FindFirstChildOfClass("Humanoid") then
+                    attachCamera()
+                    notify("Spectate", "Spectating "..target.DisplayName)
+                    return
+                end
+            end
+            notify("Spectate", target.DisplayName.." still not loaded — try again")
+            stopSpectate()
+        end)
+    else
+        attachCamera()
+        notify("Spectate", "Spectating "..target.DisplayName)
+    end
+
 end
 
 local function rejoin()
@@ -691,6 +686,15 @@ FlyHintLabel.Text = "WASD  |  Space ↑  |  Shift ↓"
 FlyHintLabel.ZIndex = 101
 FlyHintLabel.Parent = FlyContent
 
+-- Keybind row in fly window (syncs with move tab)
+-- Built after makeKeybindRow is defined, using a placeholder for now
+local FlyWinKeybindPlaceholder = Instance.new("Frame")
+FlyWinKeybindPlaceholder.Size = UDim2.new(1,-36,0,52)
+FlyWinKeybindPlaceholder.Position = UDim2.new(0,18,0,205)
+FlyWinKeybindPlaceholder.BackgroundTransparency = 1
+FlyWinKeybindPlaceholder.ZIndex = 101
+FlyWinKeybindPlaceholder.Parent = FlyContent
+
 -- Update fly window visual
 updateFlyWindow = function(on)
     if on then
@@ -737,12 +741,11 @@ FlySpeedBox.FocusLost:Connect(function()
 end)
 
 -- Minimize fly window
-local flyMinimized = false
 FlyMinBtn.MouseButton1Click:Connect(function()
     flyMinimized = not flyMinimized
     FlyContent.Visible = not flyMinimized
     TweenService:Create(FlyWin, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
-        {Size = flyMinimized and UDim2.new(0,320,0,56) or UDim2.new(0,320,0,270)}):Play()
+        {Size = flyMinimized and UDim2.new(0,320,0,56) or UDim2.new(0,320,0,330)}):Play()
     FlyMinBtn.Text = flyMinimized and "+" or "−"
 end)
 
@@ -1296,6 +1299,136 @@ moveTabFlyBox = makeInput(moveContent, "Fly Speed", 50, function(v)
     end
 end, 1)
 makeToggle(moveContent, "Fly", toggleFly, "Fly")
+
+-- Fly keybind row (shared logic, two instances)
+local keybindDisplays = {} -- track both displays to sync them
+
+local function makeKeybindRow(parent)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,52)
+    row.BackgroundColor3 = COLORS.row
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,8)
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1,-10,0,18)
+    titleLbl.Position = UDim2.new(0,10,0,4)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.TextColor3 = COLORS.subtext
+    titleLbl.Font = Enum.Font.Gotham
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.Text = "Fly Keybind (max 3 keys, press Enter to save):"
+    titleLbl.Parent = row
+
+    local display = Instance.new("TextBox")
+    display.Size = UDim2.new(1,-20,0,24)
+    display.Position = UDim2.new(0,10,0,24)
+    display.BackgroundColor3 = COLORS.input
+    display.TextColor3 = COLORS.text
+    display.Font = Enum.Font.GothamBold
+    display.TextSize = 13
+    display.Text = #flyKeybind == 0 and "None" or table.concat(flyKeybind, " + ")
+    display.PlaceholderText = "Click and press keys..."
+    display.BorderSizePixel = 0
+    display.ClearTextOnFocus = false
+    display.Parent = row
+    Instance.new("UICorner", display).CornerRadius = UDim.new(0,5)
+
+    table.insert(keybindDisplays, display)
+
+    local recording = false
+    local pressedKeys = {}
+
+    local function syncDisplays()
+        local txt = #flyKeybind == 0 and "None" or table.concat(flyKeybind, " + ")
+        for _, d in ipairs(keybindDisplays) do
+            d.Text = txt
+        end
+    end
+
+    local function updatePreview()
+        local txt = #pressedKeys == 0 and "..." or table.concat(pressedKeys, " + ")
+        for _, d in ipairs(keybindDisplays) do
+            d.Text = txt
+        end
+    end
+
+    display.Focused:Connect(function()
+        recording = true
+        pressedKeys = {}
+        for _, d in ipairs(keybindDisplays) do
+            d.Text = "Press keys (max 3)..."
+            d.TextColor3 = Color3.fromRGB(255,200,50)
+        end
+    end)
+
+    display.InputBegan:Connect(function(input)
+        if not recording then return end
+        local keyName = input.KeyCode.Name
+        if keyName == "Unknown" or keyName == "Return" then return end
+        -- Don't add duplicates
+        for _, k in ipairs(pressedKeys) do
+            if k == keyName then return end
+        end
+        if #pressedKeys < 3 then
+            table.insert(pressedKeys, keyName)
+            updatePreview()
+        end
+    end)
+
+    -- Press Enter to save
+    display.InputBegan:Connect(function(input)
+        if not recording then return end
+        if input.KeyCode == Enum.KeyCode.Return then
+            recording = false
+            flyKeybind = pressedKeys
+            for _, d in ipairs(keybindDisplays) do
+                d.TextColor3 = COLORS.text
+            end
+            syncDisplays()
+            if #flyKeybind == 0 then
+                notify("Fly Keybind", "Cleared")
+            else
+                notify("Fly Keybind", "Set to: "..table.concat(flyKeybind, " + "))
+            end
+            display:ReleaseFocus()
+        end
+    end)
+
+    display.FocusLost:Connect(function(enterPressed)
+        if recording and not enterPressed then
+            -- Cancelled without saving
+            recording = false
+            pressedKeys = {}
+            for _, d in ipairs(keybindDisplays) do
+                d.TextColor3 = COLORS.text
+            end
+            syncDisplays()
+        end
+    end)
+
+    return row
+end
+
+makeKeybindRow(moveContent)
+
+-- Now add keybind row to fly window too
+-- Expand fly window to fit
+FlyWin.Size = UDim2.new(0, 320, 0, 330)
+local flyMinimized = false -- forward declare for minimize btn
+
+local flyWinKeybindRow = makeKeybindRow(nil) -- create without parent first
+flyWinKeybindRow.Size = UDim2.new(1,-36,0,52)
+flyWinKeybindRow.Position = UDim2.new(0,18,0,205)
+flyWinKeybindRow.BackgroundColor3 = Color3.fromRGB(22,22,35)
+flyWinKeybindRow.ZIndex = 101
+flyWinKeybindRow.Parent = FlyContent
+-- update ZIndex of children
+for _, c in pairs(flyWinKeybindRow:GetDescendants()) do
+    if c:IsA("GuiObject") then c.ZIndex = 101 end
+end
 makeSection(moveContent, "Jump")
 makeInput(moveContent, "Jump Power", 50, function(v)
     JumpPowerValue = v
@@ -1321,70 +1454,6 @@ makeInput(worldContent, "Brightness (0.1-10)", 2, function(v)
     end
 end, 0.1, 10)
 makeToggle(worldContent, "ESP", toggleESP, "ESP")
-makeToggle(worldContent, "No Pause When Flying", function()
-    States.NoStreamPause = not States.NoStreamPause
-    if States.NoStreamPause then
-        -- The real fix: keep sending inputs so Roblox thinks the game is active
-        -- Also keep replication focus locked so streaming loads around us
-        if not _G.StreamConn then
-            local lastFocus = 0
-            _G.StreamConn = RunService.Heartbeat:Connect(function()
-                if not States.NoStreamPause then
-                    _G.StreamConn:Disconnect()
-                    _G.StreamConn = nil
-                    return
-                end
-                local now = tick()
-                if now - lastFocus < 0.5 then return end
-                lastFocus = now
-                pcall(function()
-                    -- Lock replication focus to character root
-                    local root = getRootPart()
-                    if root then
-                        LocalPlayer.ReplicationFocus = root
-                    end
-                end)
-            end)
-        end
-
-        -- Use workspace streaming setting override
-        pcall(function()
-            -- Disable the streaming pause by setting a very large streaming radius
-            -- This makes Roblox think everything is already loaded
-            workspace:SetAttribute("StreamingMinRadius", 9999)
-            workspace:SetAttribute("StreamingTargetRadius", 9999)
-        end)
-
-        -- Hook into the streaming pause event directly
-        if not _G.PauseConn then
-            _G.PauseConn = game:GetService("RunService").Stepped:Connect(function()
-                if not States.NoStreamPause then
-                    _G.PauseConn:Disconnect()
-                    _G.PauseConn = nil
-                    return
-                end
-                pcall(function()
-                    -- Keep the simulation running by sending a heartbeat
-                    if workspace.StreamingEnabled then
-                        local root = getRootPart()
-                        if root then
-                            -- Nudge replication focus constantly to force streaming
-                            LocalPlayer.ReplicationFocus = root
-                        end
-                    end
-                end)
-            end)
-        end
-
-        clearGameplayPaused()
-        notify("No Pause", "ON")
-    else
-        if _G.StreamConn then _G.StreamConn:Disconnect() _G.StreamConn = nil end
-        if _G.PauseConn then _G.PauseConn:Disconnect() _G.PauseConn = nil end
-        if _G.FocusConn then _G.FocusConn:Disconnect() _G.FocusConn = nil end
-        notify("No Pause", "OFF")
-    end
-end, "NoStreamPause")
 makeSection(worldContent, "Gravity")
 makeInput(worldContent, "Gravity", 196, function(v) workspace.Gravity = v end, 0)
 makeSection(worldContent, "Time of Day")
