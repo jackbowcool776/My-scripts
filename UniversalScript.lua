@@ -327,6 +327,7 @@ FlyWin.Position = UDim2.new(0, 300, 0.3, 0)
 FlyWin.BackgroundColor3 = Color3.fromRGB(15,15,22)
 FlyWin.BorderSizePixel = 0
 FlyWin.Visible = false
+FlyWin.ZIndex = 100
 FlyWin.Parent = gui
 Instance.new("UICorner", FlyWin).CornerRadius = UDim.new(0,16)
 
@@ -335,7 +336,7 @@ local FlyTitleBar = Instance.new("Frame")
 FlyTitleBar.Size = UDim2.new(1,0,0,56)
 FlyTitleBar.BackgroundColor3 = Color3.fromRGB(12,12,18)
 FlyTitleBar.BorderSizePixel = 0
-FlyTitleBar.ZIndex = 5
+FlyTitleBar.ZIndex = 101
 FlyTitleBar.Parent = FlyWin
 Instance.new("UICorner", FlyTitleBar).CornerRadius = UDim.new(0,16)
 
@@ -345,7 +346,7 @@ FlyTitleFix.Size = UDim2.new(1,0,0.5,0)
 FlyTitleFix.Position = UDim2.new(0,0,0.5,0)
 FlyTitleFix.BackgroundColor3 = Color3.fromRGB(12,12,18)
 FlyTitleFix.BorderSizePixel = 0
-FlyTitleFix.ZIndex = 5
+FlyTitleFix.ZIndex = 101
 FlyTitleFix.Parent = FlyTitleBar
 
 local FlyTitleText = Instance.new("TextLabel")
@@ -357,7 +358,7 @@ FlyTitleText.Font = Enum.Font.GothamBlack
 FlyTitleText.TextSize = 20
 FlyTitleText.TextXAlignment = Enum.TextXAlignment.Left
 FlyTitleText.Text = "FLY SYSTEM"
-FlyTitleText.ZIndex = 6
+FlyTitleText.ZIndex = 102
 FlyTitleText.Parent = FlyTitleBar
 
 -- Minimize button
@@ -370,7 +371,7 @@ FlyMinBtn.Font = Enum.Font.GothamBold
 FlyMinBtn.TextSize = 20
 FlyMinBtn.Text = "−"
 FlyMinBtn.BorderSizePixel = 0
-FlyMinBtn.ZIndex = 7
+FlyMinBtn.ZIndex = 103
 FlyMinBtn.Parent = FlyTitleBar
 Instance.new("UICorner", FlyMinBtn).CornerRadius = UDim.new(0,8)
 
@@ -384,7 +385,7 @@ FlyCloseBtn.Font = Enum.Font.GothamBlack
 FlyCloseBtn.TextSize = 18
 FlyCloseBtn.Text = "X"
 FlyCloseBtn.BorderSizePixel = 0
-FlyCloseBtn.ZIndex = 7
+FlyCloseBtn.ZIndex = 103
 FlyCloseBtn.Parent = FlyTitleBar
 Instance.new("UICorner", FlyCloseBtn).CornerRadius = UDim.new(0,8)
 
@@ -393,7 +394,7 @@ local FlyContent = Instance.new("Frame")
 FlyContent.Size = UDim2.new(1,0,1,-56)
 FlyContent.Position = UDim2.new(0,0,0,56)
 FlyContent.BackgroundTransparency = 1
-FlyContent.ZIndex = 4
+FlyContent.ZIndex = 100
 FlyContent.Parent = FlyWin
 
 -- Speed label
@@ -405,7 +406,7 @@ FlySpeedLabel.TextColor3 = Color3.fromRGB(190,190,205)
 FlySpeedLabel.Font = Enum.Font.GothamBold
 FlySpeedLabel.TextSize = 13
 FlySpeedLabel.Text = "SPEED (studs/sec, no limit)"
-FlySpeedLabel.ZIndex = 5
+FlySpeedLabel.ZIndex = 101
 FlySpeedLabel.Parent = FlyContent
 
 -- Speed input
@@ -419,7 +420,7 @@ FlySpeedBox.TextSize = 26
 FlySpeedBox.Text = "50"
 FlySpeedBox.ClearTextOnFocus = false
 FlySpeedBox.BorderSizePixel = 0
-FlySpeedBox.ZIndex = 5
+FlySpeedBox.ZIndex = 101
 FlySpeedBox.Parent = FlyContent
 Instance.new("UICorner", FlySpeedBox).CornerRadius = UDim.new(0,10)
 
@@ -432,7 +433,7 @@ FlyActualLabel.TextColor3 = Color3.fromRGB(120,120,150)
 FlyActualLabel.Font = Enum.Font.Gotham
 FlyActualLabel.TextSize = 12
 FlyActualLabel.Text = "Actual: 50 studs/sec"
-FlyActualLabel.ZIndex = 5
+FlyActualLabel.ZIndex = 101
 FlyActualLabel.Parent = FlyContent
 
 -- Big fly toggle button
@@ -445,7 +446,7 @@ FlyToggleBtn.Font = Enum.Font.GothamBlack
 FlyToggleBtn.TextSize = 18
 FlyToggleBtn.Text = "▶  START FLY"
 FlyToggleBtn.BorderSizePixel = 0
-FlyToggleBtn.ZIndex = 5
+FlyToggleBtn.ZIndex = 101
 FlyToggleBtn.Parent = FlyContent
 Instance.new("UICorner", FlyToggleBtn).CornerRadius = UDim.new(0,12)
 
@@ -455,7 +456,7 @@ FlyBtnShadow.Size = UDim2.new(1,0,0,6)
 FlyBtnShadow.Position = UDim2.new(0,0,1,-4)
 FlyBtnShadow.BackgroundColor3 = Color3.fromRGB(20,100,45)
 FlyBtnShadow.BorderSizePixel = 0
-FlyBtnShadow.ZIndex = 4
+FlyBtnShadow.ZIndex = 100
 FlyBtnShadow.Parent = FlyToggleBtn
 Instance.new("UICorner", FlyBtnShadow).CornerRadius = UDim.new(0,12)
 
@@ -468,7 +469,7 @@ FlyHintLabel.TextColor3 = Color3.fromRGB(90,90,120)
 FlyHintLabel.Font = Enum.Font.Gotham
 FlyHintLabel.TextSize = 11
 FlyHintLabel.Text = "WASD  |  Space ↑  |  Shift ↓"
-FlyHintLabel.ZIndex = 5
+FlyHintLabel.ZIndex = 101
 FlyHintLabel.Parent = FlyContent
 
 -- Update fly window visual
@@ -1143,6 +1144,7 @@ LocalPlayer.Chatted:Connect(function(msg)
     local cmd = args[1]
     if cmd == "!fly" then
         FlyWin.Visible = true
+        FlyWin.Parent = gui -- re-parent to bring to front
         toggleFly()
     elseif cmd == "!speed" then toggleSpeed()
     elseif cmd == "!jump" then toggleInfiniteJump()
