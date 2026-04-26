@@ -82,6 +82,7 @@ local function disableFly()
         end
     end
     if updateFlyWindow then updateFlyWindow(false) end
+    if switchRefs and switchRefs["Fly"] then switchRefs["Fly"](false) end
 end
 
 local function enableFly()
@@ -120,6 +121,7 @@ local function enableFly()
         bg.CFrame = cam.CFrame
     end)
     if updateFlyWindow then updateFlyWindow(true) end
+    if switchRefs and switchRefs["Fly"] then switchRefs["Fly"](true) end
 end
 
 local function toggleFly()
@@ -136,8 +138,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not flyKeybind then return end
     if input.KeyCode.Name == flyKeybind then
         toggleFly()
-        if switchRefs["Fly"] then switchRefs["Fly"](States.Fly) end
-        if updateFlyWindow then updateFlyWindow(States.Fly) end
     end
 end)
 
