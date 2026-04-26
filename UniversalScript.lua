@@ -130,10 +130,42 @@ end
 
 -- Disable fly on respawn (not death)
 local function setupDeath(char)
-    -- not used for fly anymore, kept for future use
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        -- When we die, force clear any stuck screens after a short delay
+        task.delay(0.5, function()
+            pcall(function()
+                local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                if not playerGui then return end
+                for _, g in pairs(playerGui:GetDescendants()) do
+                    if g:IsA("Frame") and g.Name == "PauseScreen" then
+                        g.Visible = false
+                    end
+                    if g:IsA("ScreenGui") and (
+                        g.Name:lower():find("loading") or
+                        g.Name:lower():find("pause")
+                    ) then
+                        g.Enabled = false
+                    end
+                end
+            end)
+        end)
+    end)
 end
 setupDeath(getCharacter())
 LocalPlayer.CharacterAdded:Connect(function(char)
+    setupDeath(char)
+    -- Clear any stuck screens when character loads in
+    pcall(function()
+        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            for _, g in pairs(playerGui:GetDescendants()) do
+                if g:IsA("Frame") and g.Name == "PauseScreen" then
+                    g.Visible = false
+                end
+            end
+        end
+    end)
     -- Disable fly when character respawns
     if States.Fly then
         task.wait(0.1)
@@ -1273,15 +1305,34 @@ makeToggle(worldContent, "No Pause When Flying", function()
                     return
                 end
                 pcall(function()
+                    -- Keep replication focus on character so world loads around us
                     local root = getRootPart()
                     if root then LocalPlayer.ReplicationFocus = root end
+
+                    -- Find and disable ALL pause/loading screens in PlayerGui
                     local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
                     if playerGui then
-                        for _, g in pairs(playerGui:GetChildren()) do
-                            if g.Name == "StreamingEnabledGui" and g.Enabled then
+                        for _, g in pairs(playerGui:GetDescendants()) do
+                            -- Target the streaming pause frame specifically
+                            if g:IsA("Frame") and g.Name == "PauseScreen" then
+                                g.Visible = false
+                            end
+                            -- Also target any full-screen loading overlays
+                            if g:IsA("ScreenGui") and (
+                                g.Name:lower():find("stream") or
+                                g.Name:lower():find("loading") or
+                                g.Name:lower():find("pause")
+                            ) then
                                 g.Enabled = false
                             end
                         end
+                    end
+
+                    -- The real fix: keep the humanoid state active so death pause doesn't lock
+                    local hum = getHumanoid()
+                    if hum and hum.Health <= 0 then
+                        -- Force character refresh so we don't get stuck
+                        LocalPlayer:LoadCharacter()
                     end
                 end)
             end)
@@ -1291,14 +1342,6 @@ makeToggle(worldContent, "No Pause When Flying", function()
             _G.StreamConn:Disconnect()
             _G.StreamConn = nil
         end
-        pcall(function()
-            local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-            if playerGui then
-                for _, g in pairs(playerGui:GetChildren()) do
-                    if g.Name == "StreamingEnabledGui" then g.Enabled = true end
-                end
-            end
-        end)
     end
     notify("No Pause", States.NoStreamPause and "ON" or "OFF")
 end, "NoStreamPause")
