@@ -1324,68 +1324,66 @@ makeToggle(worldContent, "ESP", toggleESP, "ESP")
 makeToggle(worldContent, "No Pause When Flying", function()
     States.NoStreamPause = not States.NoStreamPause
     if States.NoStreamPause then
-        -- Event-driven: fires only when something is added to CoreGui
-        -- much cheaper than polling every frame
+        -- The real fix: keep sending inputs so Roblox thinks the game is active
+        -- Also keep replication focus locked so streaming loads around us
         if not _G.StreamConn then
-            local coreGui = game:GetService("CoreGui")
-            _G.StreamConn = coreGui.DescendantAdded:Connect(function(desc)
-                if not States.NoStreamPause then return end
-                -- Only act if it looks like the pause screen appeared
+            local lastFocus = 0
+            _G.StreamConn = RunService.Heartbeat:Connect(function()
+                if not States.NoStreamPause then
+                    _G.StreamConn:Disconnect()
+                    _G.StreamConn = nil
+                    return
+                end
+                local now = tick()
+                if now - lastFocus < 0.5 then return end
+                lastFocus = now
                 pcall(function()
-                    if desc:IsA("TextLabel") and (
-                        desc.Text == "Gameplay Paused" or
-                        desc.Text:lower():find("gameplay paused") or
-                        desc.Text:lower():find("content loads")
-                    ) then
-                        local obj = desc
-                        while obj and not obj:IsA("ScreenGui") do
-                            obj = obj.Parent
-                        end
-                        if obj and obj:IsA("ScreenGui") then
-                            cachedPauseScreen = obj
-                            task.wait()
-                            obj.Enabled = false
-                        end
+                    -- Lock replication focus to character root
+                    local root = getRootPart()
+                    if root then
+                        LocalPlayer.ReplicationFocus = root
                     end
                 end)
             end)
-            -- Also set replication focus once
-            pcall(function()
-                local root = getRootPart()
-                if root then LocalPlayer.ReplicationFocus = root end
-            end)
-            -- Update replication focus on heartbeat but very infrequently
-            if not _G.FocusConn then
-                local lastFocus = 0
-                _G.FocusConn = RunService.Heartbeat:Connect(function()
-                    if not States.NoStreamPause then
-                        _G.FocusConn:Disconnect()
-                        _G.FocusConn = nil
-                        return
-                    end
-                    local now = tick()
-                    if now - lastFocus < 1 then return end -- only once per second
-                    lastFocus = now
-                    pcall(function()
+        end
+
+        -- Use workspace streaming setting override
+        pcall(function()
+            -- Disable the streaming pause by setting a very large streaming radius
+            -- This makes Roblox think everything is already loaded
+            workspace:SetAttribute("StreamingMinRadius", 9999)
+            workspace:SetAttribute("StreamingTargetRadius", 9999)
+        end)
+
+        -- Hook into the streaming pause event directly
+        if not _G.PauseConn then
+            _G.PauseConn = game:GetService("RunService").Stepped:Connect(function()
+                if not States.NoStreamPause then
+                    _G.PauseConn:Disconnect()
+                    _G.PauseConn = nil
+                    return
+                end
+                pcall(function()
+                    -- Keep the simulation running by sending a heartbeat
+                    if workspace.StreamingEnabled then
                         local root = getRootPart()
-                        if root then LocalPlayer.ReplicationFocus = root end
-                    end)
+                        if root then
+                            -- Nudge replication focus constantly to force streaming
+                            LocalPlayer.ReplicationFocus = root
+                        end
+                    end
                 end)
-            end
+            end)
         end
-        -- Also hide it right now in case it's already showing
+
         clearGameplayPaused()
+        notify("No Pause", "ON")
     else
-        if _G.StreamConn then
-            _G.StreamConn:Disconnect()
-            _G.StreamConn = nil
-        end
-        if _G.FocusConn then
-            _G.FocusConn:Disconnect()
-            _G.FocusConn = nil
-        end
+        if _G.StreamConn then _G.StreamConn:Disconnect() _G.StreamConn = nil end
+        if _G.PauseConn then _G.PauseConn:Disconnect() _G.PauseConn = nil end
+        if _G.FocusConn then _G.FocusConn:Disconnect() _G.FocusConn = nil end
+        notify("No Pause", "OFF")
     end
-    notify("No Pause", States.NoStreamPause and "ON" or "OFF")
 end, "NoStreamPause")
 makeSection(worldContent, "Gravity")
 makeInput(worldContent, "Gravity", 196, function(v) workspace.Gravity = v end, 0)
