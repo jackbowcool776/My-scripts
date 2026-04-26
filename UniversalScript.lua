@@ -127,19 +127,19 @@ local function toggleFly()
     notify("Fly", States.Fly and "ON" or "OFF")
 end
 
--- Disable fly on death
+-- Disable fly on respawn (not death)
 local function setupDeath(char)
-    local hum = char:WaitForChild("Humanoid")
-    hum.Died:Connect(function()
-        if States.Fly then
-            disableFly()
-            notify("Fly", "Disabled on death")
-        end
-    end)
+    -- not used for fly anymore, kept for future use
 end
 setupDeath(getCharacter())
 LocalPlayer.CharacterAdded:Connect(function(char)
-    setupDeath(char)
+    -- Disable fly when character respawns
+    if States.Fly then
+        task.wait(0.1)
+        disableFly()
+        if switchRefs["Fly"] then switchRefs["Fly"](false) end
+        notify("Fly", "Disabled on respawn")
+    end
     task.wait(0.5)
     if States.Speed then
         local h = getHumanoid()
@@ -593,11 +593,11 @@ FlySpeedBox.FocusLost:Connect(function()
         FlySpeed = v
         FlySpeedBox.Text = tostring(v)
         FlyActualLabel.Text = "Actual: "..v.." studs/sec"
-        -- sync move tab box
         if moveTabFlyBox then
             moveTabFlyBox.Text = tostring(v)
         end
     else
+        -- reset to last valid value
         FlySpeedBox.Text = tostring(FlySpeed)
     end
 end)
@@ -836,7 +836,7 @@ local function makeSection(parent, text)
     l.Parent = parent
 end
 
-local function makeInput(parent, label, default, onChange)
+local function makeInput(parent, label, default, onChange, minVal, maxVal)
     local wrap = Instance.new("Frame")
     wrap.Size = UDim2.new(1,0,0,50)
     wrap.BackgroundColor3 = COLORS.row
@@ -868,10 +868,21 @@ local function makeInput(parent, label, default, onChange)
     box.Parent = wrap
     Instance.new("UICorner", box).CornerRadius = UDim.new(0,5)
 
+    local currentVal = default
     box.FocusLost:Connect(function()
         local v = tonumber(box.Text)
-        if v then lbl.Text = label..": "..v onChange(v)
-        else box.Text = tostring(default) end
+        if v then
+            -- clamp to min/max if provided
+            if minVal and v < minVal then v = minVal end
+            if maxVal and v > maxVal then v = maxVal end
+            currentVal = v
+            box.Text = tostring(v)
+            lbl.Text = label..": "..v
+            onChange(v)
+        else
+            -- not a number, reset to last valid value
+            box.Text = tostring(currentVal)
+        end
     end)
     return box
 end
@@ -1125,17 +1136,16 @@ makeSection(moveContent, "Walk Speed")
 makeInput(moveContent, "Walk Speed", 50, function(v)
     SpeedValue = v
     if States.Speed then local h = getHumanoid() if h then h.WalkSpeed = v end end
-end)
+end, 1)
 makeToggle(moveContent, "Speed", toggleSpeed, "Speed")
 makeSection(moveContent, "Fly")
 moveTabFlyBox = makeInput(moveContent, "Fly Speed", 50, function(v)
     FlySpeed = v
-    -- sync fly window box
     if FlySpeedBox then
         FlySpeedBox.Text = tostring(v)
         FlyActualLabel.Text = "Actual: "..v.." studs/sec"
     end
-end)
+end, 1)
 makeToggle(moveContent, "Fly", toggleFly, "Fly")
 makeSection(moveContent, "Jump")
 makeInput(moveContent, "Jump Power", 50, function(v)
@@ -1145,7 +1155,7 @@ makeInput(moveContent, "Jump Power", 50, function(v)
         pcall(function() h.JumpHeight = v end)
         pcall(function() h.JumpPower = v end)
     end
-end)
+end, 1)
 makeToggle(moveContent, "Infinite Jump", toggleInfiniteJump, "InfiniteJump")
 makeSection(moveContent, "Other")
 makeToggle(moveContent, "Noclip", toggleNoclip, "Noclip")
@@ -1155,34 +1165,29 @@ makeToggle(moveContent, "Anti-AFK", toggleAntiAFK, "AntiAFK")
 local worldContent = newTab("🌍 World")
 makeSection(worldContent, "Visuals")
 makeToggle(worldContent, "Fullbright", toggleFullbright, "Fullbright")
-makeInput(worldContent, "Brightness (1-10)", 2, function(v)
-    FullbrightLevel = math.clamp(v, 0.1, 10)
-    -- update live if fullbright is already on
+makeInput(worldContent, "Brightness (0.1-10)", 2, function(v)
+    FullbrightLevel = v
     if States.Fullbright then
         Lighting.Brightness = FullbrightLevel
     end
-end)
+end, 0.1, 10)
 makeToggle(worldContent, "ESP", toggleESP, "ESP")
 makeSection(worldContent, "Gravity")
-makeInput(worldContent, "Gravity", 196, function(v) workspace.Gravity = v end)
+makeInput(worldContent, "Gravity", 196, function(v) workspace.Gravity = v end, 0)
 makeSection(worldContent, "Time of Day")
 makeInput(worldContent, "Clock Time (0-24)", 14, function(v)
-    -- ClockTime alone doesnt always update visually, need to also disable
-    -- any sky/atmosphere overrides and force a lighting update
-    Lighting.ClockTime = math.clamp(v, 0, 24)
-    -- Remove any AtmosphereBlur or day cycle scripts that override time
+    Lighting.ClockTime = v
     for _, obj in pairs(Lighting:GetChildren()) do
         if obj:IsA("Script") or obj:IsA("LocalScript") then
             pcall(function() obj.Disabled = true end)
         end
     end
-    -- Force visual refresh
     Lighting.Brightness = Lighting.Brightness
-end)
+end, 0, 24)
 makeSection(worldContent, "Camera")
-makeInput(worldContent, "FOV", 70, function(v) Camera.FieldOfView = v end)
+makeInput(worldContent, "FOV", 70, function(v) Camera.FieldOfView = v end, 1, 120)
 makeSection(worldContent, "FPS")
-makeInput(worldContent, "FPS Cap", 144, function(v) pcall(function() setfpscap(v) end) end)
+makeInput(worldContent, "FPS Cap", 144, function(v) pcall(function() setfpscap(v) end) end, 1)
 
 -- PLAYER TAB
 local playerContent = newTab("👤 Player")
