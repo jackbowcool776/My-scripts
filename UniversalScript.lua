@@ -308,13 +308,13 @@ end
 local spectateConn = nil
 local spectateTarget = nil
 local originalCameraSubject = nil
+local resetPickerCallback = nil -- set after player picker is created
 
 local function stopSpectate()
     if spectateConn then
         spectateConn:Disconnect()
         spectateConn = nil
     end
-    -- Restore camera back to local player
     Camera.CameraType = Enum.CameraType.Custom
     if originalCameraSubject then
         Camera.CameraSubject = originalCameraSubject
@@ -326,6 +326,18 @@ local function stopSpectate()
     spectateTarget = nil
     notify("Spectate", "Stopped spectating")
 end
+
+-- Stop spectating and clear picker when a player leaves
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+    if spectateTarget and spectateTarget == leavingPlayer then
+        stopSpectate()
+        notify("Spectate", leavingPlayer.DisplayName.." left the game")
+    end
+    -- Reset picker if the selected player left
+    if resetPickerCallback then
+        resetPickerCallback(leavingPlayer.Name)
+    end
+end)
 
 local function spectatePlayer(name)
     -- If already spectating, stop
@@ -1019,7 +1031,6 @@ local function makePlayerPicker(parent)
     local MAX_VISIBLE = 5
     local ITEM_H = 28
     local DROP_MAX_H = MAX_VISIBLE * (ITEM_H + 3) + 8
-
     local outer = Instance.new("Frame")
     outer.Size = UDim2.new(1,0,0,50)
     outer.BackgroundColor3 = COLORS.row
@@ -1179,7 +1190,23 @@ local function makePlayerPicker(parent)
     selBtn.MouseButton1Click:Connect(function()
         if dropOpen then closeDropdown() else openDropdown() end
     end)
-    return outer, function() return chosenName end
+
+    -- Reset picker if a specific player left
+    local function resetIfLeft(leavingUsername)
+        if chosenName == leavingUsername then
+            chosenName = nil
+            selBtn.Text = "Click to pick player ▾"
+            -- close dropdown if open
+            if dropOpen then
+                dropOpen = false
+                dropScroll.Visible = false
+                dropScroll.Size = UDim2.new(1,-20,0,0)
+                outer.Size = UDim2.new(1,0,0,50)
+            end
+        end
+    end
+
+    return outer, function() return chosenName end, resetIfLeft
 end
 
 -- =====================
@@ -1248,7 +1275,8 @@ makeInput(worldContent, "FPS Cap", 144, function(v) pcall(function() setfpscap(v
 -- PLAYER TAB
 local playerContent = newTab("👤 Player")
 makeSection(playerContent, "Select a Player")
-local _, getTarget = makePlayerPicker(playerContent)
+local _, getTarget, resetPicker = makePlayerPicker(playerContent)
+resetPickerCallback = resetPicker
 makeSection(playerContent, "Actions")
 makeButton(playerContent, "🚀 Teleport to Player", function()
     local t = getTarget()
