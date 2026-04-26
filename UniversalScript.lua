@@ -176,11 +176,13 @@ local function toggleAntiAFK()
     notify("Anti-AFK", States.AntiAFK and "ON" or "OFF")
 end
 
+local FullbrightLevel = 2 -- default brightness level
+
 local function toggleFullbright()
     States.Fullbright = not States.Fullbright
     if States.Fullbright then
         Lighting.Ambient = Color3.fromRGB(255,255,255)
-        Lighting.Brightness = 2
+        Lighting.Brightness = FullbrightLevel
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 1e9
         for _, v in pairs(Lighting:GetChildren()) do
@@ -1029,6 +1031,9 @@ makeInput(moveContent, "Walk Speed", 50, function(v)
     if States.Speed then local h = getHumanoid() if h then h.WalkSpeed = v end end
 end)
 makeToggle(moveContent, "Speed", toggleSpeed, "Speed")
+makeSection(moveContent, "Fly")
+makeInput(moveContent, "Fly Speed", 50, function(v) FlySpeed = v end)
+makeToggle(moveContent, "Fly", toggleFly, "Fly")
 makeSection(moveContent, "Jump")
 makeInput(moveContent, "Jump Power", 50, function(v)
     JumpPowerValue = v
@@ -1047,11 +1052,30 @@ makeToggle(moveContent, "Anti-AFK", toggleAntiAFK, "AntiAFK")
 local worldContent = newTab("🌍 World")
 makeSection(worldContent, "Visuals")
 makeToggle(worldContent, "Fullbright", toggleFullbright, "Fullbright")
+makeInput(worldContent, "Brightness (1-10)", 2, function(v)
+    FullbrightLevel = math.clamp(v, 0.1, 10)
+    -- update live if fullbright is already on
+    if States.Fullbright then
+        Lighting.Brightness = FullbrightLevel
+    end
+end)
 makeToggle(worldContent, "ESP", toggleESP, "ESP")
 makeSection(worldContent, "Gravity")
 makeInput(worldContent, "Gravity", 196, function(v) workspace.Gravity = v end)
 makeSection(worldContent, "Time of Day")
-makeInput(worldContent, "Clock Time (0-24)", 14, function(v) Lighting.ClockTime = v end)
+makeInput(worldContent, "Clock Time (0-24)", 14, function(v)
+    -- ClockTime alone doesnt always update visually, need to also disable
+    -- any sky/atmosphere overrides and force a lighting update
+    Lighting.ClockTime = math.clamp(v, 0, 24)
+    -- Remove any AtmosphereBlur or day cycle scripts that override time
+    for _, obj in pairs(Lighting:GetChildren()) do
+        if obj:IsA("Script") or obj:IsA("LocalScript") then
+            pcall(function() obj.Disabled = true end)
+        end
+    end
+    -- Force visual refresh
+    Lighting.Brightness = Lighting.Brightness
+end)
 makeSection(worldContent, "Camera")
 makeInput(worldContent, "FOV", 70, function(v) Camera.FieldOfView = v end)
 makeSection(worldContent, "FPS")
