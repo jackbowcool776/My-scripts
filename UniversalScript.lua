@@ -30,6 +30,7 @@ repeat task.wait(0.1) until getCharacter() and getHumanoid() and getRootPart()
 local States = {
     Speed = false, Fly = false, InfiniteJump = false,
     AntiAFK = false, Fullbright = false, ESP = false, Noclip = false,
+    NoFallDamage = false,
 }
 
 local SpeedValue = 50
@@ -142,6 +143,18 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if States.Speed then
         local h = getHumanoid()
         if h then h.WalkSpeed = SpeedValue end
+    end
+    if States.NoFallDamage then
+        local h = getHumanoid()
+        if h then
+            h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            if _G.FallDmgConn then _G.FallDmgConn:Disconnect() end
+            _G.FallDmgConn = h.StateChanged:Connect(function(_, new)
+                if new == Enum.HumanoidStateType.Landed then
+                    h.Health = h.Health
+                end
+            end)
+        end
     end
 end)
 
@@ -572,7 +585,7 @@ TitleBar.Parent = Main
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 10)
 
 local TitleText = Instance.new("TextLabel")
-TitleText.Size = UDim2.new(1, -90, 1, 0)
+TitleText.Size = UDim2.new(1, -50, 1, 0)
 TitleText.Position = UDim2.new(0, 12, 0, 0)
 TitleText.BackgroundTransparency = 1
 TitleText.TextColor3 = COLORS.text
@@ -582,20 +595,6 @@ TitleText.TextXAlignment = Enum.TextXAlignment.Left
 TitleText.Text = "⚡ Universal Script"
 TitleText.ZIndex = 11
 TitleText.Parent = TitleBar
-
--- Fly window toggle button on main hub
-local FlyWinBtn = Instance.new("TextButton")
-FlyWinBtn.Size = UDim2.new(0,28,0,28)
-FlyWinBtn.Position = UDim2.new(1,-68,0.5,-14)
-FlyWinBtn.BackgroundColor3 = Color3.fromRGB(30,140,200)
-FlyWinBtn.TextColor3 = Color3.fromRGB(255,255,255)
-FlyWinBtn.Font = Enum.Font.GothamBold
-FlyWinBtn.TextSize = 14
-FlyWinBtn.Text = "🚀"
-FlyWinBtn.BorderSizePixel = 0
-FlyWinBtn.ZIndex = 12
-FlyWinBtn.Parent = TitleBar
-Instance.new("UICorner", FlyWinBtn).CornerRadius = UDim.new(0,6)
 
 local OpenBtn = Instance.new("TextButton")
 OpenBtn.Size = UDim2.new(0, 28, 0, 28)
@@ -610,15 +609,6 @@ OpenBtn.ZIndex = 12
 OpenBtn.Parent = TitleBar
 Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(0, 6)
 
-FlyWinBtn.MouseButton1Click:Connect(function()
-    FlyWin.Visible = not FlyWin.Visible
-    if FlyWin.Visible and flyMinimized then
-        flyMinimized = false
-        FlyContent.Visible = true
-        FlyWin.Size = UDim2.new(0,320,0,270)
-        FlyMinBtn.Text = "−"
-    end
-end)
 
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, 0, 0, 34)
@@ -1051,6 +1041,32 @@ makeToggle(moveContent, "Infinite Jump", toggleInfiniteJump, "InfiniteJump")
 makeSection(moveContent, "Other")
 makeToggle(moveContent, "Noclip", toggleNoclip, "Noclip")
 makeToggle(moveContent, "Anti-AFK", toggleAntiAFK, "AntiAFK")
+makeToggle(moveContent, "No Fall Damage", function()
+    States.NoFallDamage = not States.NoFallDamage
+    local hum = getHumanoid()
+    if hum then
+        if States.NoFallDamage then
+            hum.BreakJointsOnDeath = false
+            -- Connect to keep fall damage at 0
+            if not _G.FallDmgConn then
+                _G.FallDmgConn = hum.StateChanged:Connect(function(_, new)
+                    if new == Enum.HumanoidStateType.Landed then
+                        hum.Health = hum.Health
+                    end
+                end)
+                -- Override fall damage via FallingDown state
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            end
+        else
+            if _G.FallDmgConn then
+                _G.FallDmgConn:Disconnect()
+                _G.FallDmgConn = nil
+            end
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        end
+    end
+    notify("No Fall Damage", States.NoFallDamage and "ON" or "OFF")
+end, "NoFallDamage")
 
 -- WORLD TAB
 local worldContent = newTab("🌍 World")
