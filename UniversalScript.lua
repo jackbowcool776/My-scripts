@@ -1,4 +1,3 @@
-
 -- Universal Script by Claude
 -- Main hub + separate Fly System window
 
@@ -267,15 +266,25 @@ local function toggleNoclip()
 end
 
 local function teleportToPlayer(query)
+    -- lowercase but keep numbers intact
     local queryLower = string.lower(query)
     local matches = {}
 
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
             local displayLower = string.lower(p.DisplayName)
-            -- check if display name STARTS WITH the query
-            if string.sub(displayLower, 1, #queryLower) == queryLower then
-                table.insert(matches, p)
+            local userLower = string.lower(p.Name)
+            -- match if display name OR username starts with query
+            if string.sub(displayLower, 1, #queryLower) == queryLower
+            or string.sub(userLower, 1, #queryLower) == queryLower then
+                -- avoid duplicates if both display and username match
+                local already = false
+                for _, m in ipairs(matches) do
+                    if m == p then already = true break end
+                end
+                if not already then
+                    table.insert(matches, p)
+                end
             end
         end
     end
@@ -1009,7 +1018,12 @@ local function makePlayerPicker(parent)
 
     local function closeDropdown()
         dropOpen = false
-        selBtn.Text = (chosenName or "Click to pick player").." ▾"
+        if chosenName then
+            local p = Players:FindFirstChild(chosenName)
+            selBtn.Text = (p and p.DisplayName or chosenName).." ▾"
+        else
+            selBtn.Text = "Click to pick player ▾"
+        end
         TweenService:Create(dropScroll, TweenInfo.new(0.15), {Size = UDim2.new(1,-20,0,0)}):Play()
         TweenService:Create(outer, TweenInfo.new(0.15), {Size = UDim2.new(1,0,0,50)}):Play()
         task.wait(0.15)
@@ -1026,10 +1040,10 @@ local function makePlayerPicker(parent)
 
         local playerList = {}
         for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then table.insert(playerList, p.Name) end
+            if p ~= LocalPlayer then table.insert(playerList, p) end
         end
 
-        local PAD = 8 -- top + bottom padding
+        local PAD = 8
         local SPACING = 3
 
         if #playerList == 0 then
@@ -1044,14 +1058,21 @@ local function makePlayerPicker(parent)
             none.Parent = dropScroll
             dropScroll.CanvasSize = UDim2.new(0,0,0,36)
         else
-            for i, name in ipairs(playerList) do
+            for i, p in ipairs(playerList) do
+                -- show display name, with username below if different
+                local displayText = p.DisplayName
+                if p.DisplayName ~= p.Name then
+                    displayText = p.DisplayName.." (@"..p.Name..")"
+                end
+
                 local item = Instance.new("TextButton")
                 item.Size = UDim2.new(1,0,0,ITEM_H)
                 item.BackgroundColor3 = COLORS.dropItem
                 item.TextColor3 = COLORS.text
                 item.Font = Enum.Font.Gotham
-                item.TextSize = 13
-                item.Text = name
+                item.TextSize = 12
+                item.Text = displayText
+                item.TextTruncate = Enum.TextTruncate.AtEnd
                 item.BorderSizePixel = 0
                 item.LayoutOrder = i
                 item.ZIndex = 22
@@ -1065,8 +1086,12 @@ local function makePlayerPicker(parent)
                     TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = COLORS.dropItem}):Play()
                 end)
                 item.MouseButton1Click:Connect(function()
-                    chosenName = name
-                    closeDropdown()
+                    chosenName = p.Name -- store username for teleport/spectate functions
+                    selBtn.Text = p.DisplayName.." ▾"
+                    dropScroll.Visible = false
+                    TweenService:Create(dropScroll, TweenInfo.new(0.15), {Size = UDim2.new(1,-20,0,0)}):Play()
+                    TweenService:Create(outer, TweenInfo.new(0.15), {Size = UDim2.new(1,0,0,50)}):Play()
+                    dropOpen = false
                 end)
             end
 
