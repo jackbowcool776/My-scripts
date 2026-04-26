@@ -127,44 +127,47 @@ local function toggleFly()
     notify("Fly", States.Fly and "ON" or "OFF")
 end
 
--- Fly keybind storage
-local flyKeybind = {} -- e.g. {"LeftShift", "F"}
+-- Fly keybind storage - single key only
+local flyKeybind = nil -- e.g. "Q"
 
-local function checkFlyKeybind()
-    if #flyKeybind == 0 then return false end
-    for _, key in ipairs(flyKeybind) do
-        if not UserInputService:IsKeyDown(Enum.KeyCode[key]) then
-            return false
-        end
-    end
-    return true
-end
-
--- Listen for fly keybind globally
+-- Listen for fly keybind globally - single key press
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if #flyKeybind == 0 then return end
-    if checkFlyKeybind() then
+    if not flyKeybind then return end
+    if input.KeyCode.Name == flyKeybind then
         toggleFly()
         if switchRefs["Fly"] then switchRefs["Fly"](States.Fly) end
         if updateFlyWindow then updateFlyWindow(States.Fly) end
     end
 end)
 
+local function disableFlyUI()
+    States.Fly = false
+    if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+    local hum = getHumanoid()
+    if hum then hum.PlatformStand = false end
+    if switchRefs and switchRefs["Fly"] then switchRefs["Fly"](false) end
+    if updateFlyWindow then updateFlyWindow(false) end
+end
+
 LocalPlayer.CharacterAdded:Connect(function(char)
     char:WaitForChild("HumanoidRootPart")
     char:WaitForChild("Humanoid")
 
-    -- Disable fly on respawn
+    -- Disable fly on respawn and update UI
     if States.Fly then
-        States.Fly = false
-        if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
-        local hum = getHumanoid()
-        if hum then hum.PlatformStand = false end
-        if switchRefs["Fly"] then switchRefs["Fly"](false) end
-        if updateFlyWindow then updateFlyWindow(false) end
+        disableFlyUI()
         notify("Fly", "Disabled on respawn")
     end
+
+    -- Also hook death to turn off fly immediately when dying
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        if States.Fly then
+            disableFlyUI()
+            notify("Fly", "Disabled on death")
+        end
+    end)
 
     task.wait(0.5)
     if States.Speed then
@@ -179,6 +182,17 @@ LocalPlayer.CharacterAdded:Connect(function(char)
         end
     end
 end)
+
+-- Also hook initial character death
+local initHum = getHumanoid()
+if initHum then
+    initHum.Died:Connect(function()
+        if States.Fly then
+            disableFlyUI()
+            notify("Fly", "Disabled on death")
+        end
+    end)
+end
 
 UserInputService.JumpRequest:Connect(function()
     if States.InfiniteJump then
@@ -1301,14 +1315,14 @@ end, 1)
 makeToggle(moveContent, "Fly", toggleFly, "Fly")
 
 -- Fly keybind row (shared logic, two instances)
-local keybindDisplays = {} -- track both displays to sync them
+local keybindDisplays = {}
 
 local function makeKeybindRow(parent)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1,0,0,52)
+    row.Size = UDim2.new(1,0,0,50)
     row.BackgroundColor3 = COLORS.row
     row.BorderSizePixel = 0
-    row.Parent = parent
+    if parent then row.Parent = parent end
     Instance.new("UICorner", row).CornerRadius = UDim.new(0,8)
 
     local titleLbl = Instance.new("TextLabel")
@@ -1319,94 +1333,62 @@ local function makeKeybindRow(parent)
     titleLbl.Font = Enum.Font.Gotham
     titleLbl.TextSize = 11
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.Text = "Fly Keybind (max 3 keys, press Enter to save):"
+    titleLbl.Text = "Fly Keybind — click box then press a key:"
     titleLbl.Parent = row
 
-    local display = Instance.new("TextBox")
+    local display = Instance.new("TextButton")
     display.Size = UDim2.new(1,-20,0,24)
-    display.Position = UDim2.new(0,10,0,24)
+    display.Position = UDim2.new(0,10,0,22)
     display.BackgroundColor3 = COLORS.input
     display.TextColor3 = COLORS.text
     display.Font = Enum.Font.GothamBold
     display.TextSize = 13
-    display.Text = #flyKeybind == 0 and "None" or table.concat(flyKeybind, " + ")
-    display.PlaceholderText = "Click and press keys..."
+    display.Text = flyKeybind or "None"
     display.BorderSizePixel = 0
-    display.ClearTextOnFocus = false
     display.Parent = row
     Instance.new("UICorner", display).CornerRadius = UDim.new(0,5)
 
     table.insert(keybindDisplays, display)
 
-    local recording = false
-    local pressedKeys = {}
-
     local function syncDisplays()
-        local txt = #flyKeybind == 0 and "None" or table.concat(flyKeybind, " + ")
+        local txt = flyKeybind or "None"
         for _, d in ipairs(keybindDisplays) do
             d.Text = txt
+            d.TextColor3 = COLORS.text
         end
     end
 
-    local function updatePreview()
-        local txt = #pressedKeys == 0 and "..." or table.concat(pressedKeys, " + ")
-        for _, d in ipairs(keybindDisplays) do
-            d.Text = txt
-        end
-    end
+    local waiting = false
 
-    display.Focused:Connect(function()
-        recording = true
-        pressedKeys = {}
+    display.MouseButton1Click:Connect(function()
+        if waiting then return end
+        waiting = true
         for _, d in ipairs(keybindDisplays) do
-            d.Text = "Press keys (max 3)..."
+            d.Text = "Press a key..."
             d.TextColor3 = Color3.fromRGB(255,200,50)
         end
-    end)
 
-    display.InputBegan:Connect(function(input)
-        if not recording then return end
-        local keyName = input.KeyCode.Name
-        if keyName == "Unknown" or keyName == "Return" then return end
-        -- Don't add duplicates
-        for _, k in ipairs(pressedKeys) do
-            if k == keyName then return end
-        end
-        if #pressedKeys < 3 then
-            table.insert(pressedKeys, keyName)
-            updatePreview()
-        end
-    end)
-
-    -- Press Enter to save
-    display.InputBegan:Connect(function(input)
-        if not recording then return end
-        if input.KeyCode == Enum.KeyCode.Return then
-            recording = false
-            flyKeybind = pressedKeys
-            for _, d in ipairs(keybindDisplays) do
-                d.TextColor3 = COLORS.text
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            local keyName = input.KeyCode.Name
+            if keyName == "Unknown" or keyName == "Return" or keyName == "Escape" then
+                -- Escape = clear keybind
+                if keyName == "Escape" then
+                    flyKeybind = nil
+                    notify("Fly Keybind", "Cleared")
+                end
+                waiting = false
+                conn:Disconnect()
+                syncDisplays()
+                return
             end
+            flyKeybind = keyName
+            waiting = false
+            conn:Disconnect()
+            notify("Fly Keybind", "Set to: "..keyName)
             syncDisplays()
-            if #flyKeybind == 0 then
-                notify("Fly Keybind", "Cleared")
-            else
-                notify("Fly Keybind", "Set to: "..table.concat(flyKeybind, " + "))
-            end
-            display:ReleaseFocus()
-        end
-    end)
-
-    display.FocusLost:Connect(function(enterPressed)
-        if recording and not enterPressed then
-            -- Cancelled without saving
-            recording = false
-            pressedKeys = {}
-            for _, d in ipairs(keybindDisplays) do
-                d.TextColor3 = COLORS.text
-            end
-            syncDisplays()
-        end
+        end)
     end)
 
     return row
@@ -1414,18 +1396,15 @@ end
 
 makeKeybindRow(moveContent)
 
--- Now add keybind row to fly window too
--- Expand fly window to fit
+-- Add keybind row to fly window
 FlyWin.Size = UDim2.new(0, 320, 0, 330)
-local flyMinimized = false -- forward declare for minimize btn
+local flyMinimized = false
 
-local flyWinKeybindRow = makeKeybindRow(nil) -- create without parent first
-flyWinKeybindRow.Size = UDim2.new(1,-36,0,52)
+local flyWinKeybindRow = makeKeybindRow(FlyContent)
+flyWinKeybindRow.Size = UDim2.new(1,-36,0,50)
 flyWinKeybindRow.Position = UDim2.new(0,18,0,205)
 flyWinKeybindRow.BackgroundColor3 = Color3.fromRGB(22,22,35)
 flyWinKeybindRow.ZIndex = 101
-flyWinKeybindRow.Parent = FlyContent
--- update ZIndex of children
 for _, c in pairs(flyWinKeybindRow:GetDescendants()) do
     if c:IsA("GuiObject") then c.ZIndex = 101 end
 end
