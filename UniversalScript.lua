@@ -1536,37 +1536,43 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     raycastParams.FilterDescendantsInstances = {getCharacter()}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    -- Cast very far so you can tp to distant surfaces
     local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100000, raycastParams)
 
     local teleportPos
     if result then
-        -- Offset along surface normal so we don't clip in
-        teleportPos = result.Position + (result.Normal * 3.5)
+        -- Place exactly at the hit point, offset along normal just enough to not clip
+        teleportPos = result.Position + (result.Normal * 2.5)
     else
-        -- No surface hit - teleport far along the ray direction
+        -- Pointing at sky - go far along the ray
         teleportPos = unitRay.Origin + unitRay.Direction * 2000
     end
 
-    root.CFrame = CFrame.new(teleportPos)
+    -- Keep character's current facing direction, just move position
+    local currentLook = root.CFrame.LookVector
+    root.CFrame = CFrame.new(teleportPos, teleportPos + currentLook)
+    -- Zero out velocity so gravity doesn't immediately pull down
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end)
+
     notify("Teleport", "Teleported!")
 
     -- Freeze if enabled
     if freezeOnTp then
         local hum = getHumanoid()
         if hum then
-            -- Clean up any previous freeze
             if freezeBodyPos then
                 pcall(function() freezeBodyPos:Destroy() end)
                 freezeBodyPos = nil
             end
 
-            -- Zero out all movement
             hum.WalkSpeed = 0
             hum.JumpPower = 0
             pcall(function() hum.JumpHeight = 0 end)
 
-            -- Use BodyPosition to hold in mid-air
+            -- Small wait so position is set before BodyPosition locks it
+            task.wait(0.05)
             local bp = Instance.new("BodyPosition")
             bp.Name = "FreezePos"
             bp.Position = root.Position
@@ -1576,14 +1582,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             bp.Parent = root
             freezeBodyPos = bp
 
-            -- Also zero velocity
             root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
 
             notify("Frozen", "Frozen in air for "..freezeDuration.."s")
 
             task.delay(freezeDuration, function()
-                -- Remove freeze
                 if freezeBodyPos then
                     pcall(function() freezeBodyPos:Destroy() end)
                     freezeBodyPos = nil
