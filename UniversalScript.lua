@@ -1520,6 +1520,7 @@ freezeInput = makeInput(moveContent, "Freeze Duration (1-5 sec)", 2, function(v)
 end, 1, 5)
 
 -- Listen for click-to-tp keybind
+local freezeBodyPos = nil
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if not clickTpKeybind then return end
@@ -1528,7 +1529,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     local root = getRootPart()
     if not root then return end
 
-    -- Raycast from mouse into world, hitting everything including walls/roof
     local mousePos = UserInputService:GetMouseLocation()
     local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
@@ -1536,36 +1536,67 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     raycastParams.FilterDescendantsInstances = {getCharacter()}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 10000, raycastParams)
+    -- Cast very far so you can tp to distant surfaces
+    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100000, raycastParams)
 
+    local teleportPos
     if result then
-        -- Place character right at the hit point regardless of surface direction
-        -- Offset slightly along the surface normal so we don't clip into it
-        local teleportPos = result.Position + (result.Normal * 3)
-        root.CFrame = CFrame.new(teleportPos)
-        notify("Teleport", "Teleported!")
-
-        -- Freeze if enabled
-        if freezeOnTp then
-            local hum = getHumanoid()
-            if hum then
-                hum.WalkSpeed = 0
-                hum.JumpPower = 0
-                pcall(function() hum.JumpHeight = 0 end)
-                notify("Frozen", "Frozen for "..freezeDuration.."s")
-                task.delay(freezeDuration, function()
-                    local h = getHumanoid()
-                    if h then
-                        h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed
-                        h.JumpPower = JumpPowerValue or 50
-                        pcall(function() h.JumpHeight = JumpPowerValue or 50 end)
-                    end
-                    notify("Frozen", "Unfrozen!")
-                end)
-            end
-        end
+        -- Offset along surface normal so we don't clip in
+        teleportPos = result.Position + (result.Normal * 3.5)
     else
-        notify("Teleport", "No surface found — aim at a surface")
+        -- No surface hit - teleport far along the ray direction
+        teleportPos = unitRay.Origin + unitRay.Direction * 2000
+    end
+
+    root.CFrame = CFrame.new(teleportPos)
+    notify("Teleport", "Teleported!")
+
+    -- Freeze if enabled
+    if freezeOnTp then
+        local hum = getHumanoid()
+        if hum then
+            -- Clean up any previous freeze
+            if freezeBodyPos then
+                pcall(function() freezeBodyPos:Destroy() end)
+                freezeBodyPos = nil
+            end
+
+            -- Zero out all movement
+            hum.WalkSpeed = 0
+            hum.JumpPower = 0
+            pcall(function() hum.JumpHeight = 0 end)
+
+            -- Use BodyPosition to hold in mid-air
+            local bp = Instance.new("BodyPosition")
+            bp.Name = "FreezePos"
+            bp.Position = root.Position
+            bp.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            bp.P = 1e4
+            bp.D = 1e3
+            bp.Parent = root
+            freezeBodyPos = bp
+
+            -- Also zero velocity
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+
+            notify("Frozen", "Frozen in air for "..freezeDuration.."s")
+
+            task.delay(freezeDuration, function()
+                -- Remove freeze
+                if freezeBodyPos then
+                    pcall(function() freezeBodyPos:Destroy() end)
+                    freezeBodyPos = nil
+                end
+                local h = getHumanoid()
+                if h then
+                    h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed
+                    h.JumpPower = JumpPowerValue or 50
+                    pcall(function() h.JumpHeight = JumpPowerValue or 50 end)
+                end
+                notify("Frozen", "Unfrozen!")
+            end)
+        end
     end
 end)
 
