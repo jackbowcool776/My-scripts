@@ -1503,31 +1503,67 @@ end
 makeSection(moveContent, "Click to Teleport")
 makeClickTpRow(moveContent)
 
+-- Freeze on teleport toggle and duration
+local freezeOnTp = false
+local freezeDuration = 2
+local freezeInput = nil
+
+local _, _, freezeRowRef = makeToggle(moveContent, "Freeze on Teleport", function()
+    freezeOnTp = not freezeOnTp
+    notify("Freeze on TP", freezeOnTp and "ON" or "OFF")
+end, "FreezeOnTp")
+
+States.FreezeOnTp = false
+
+freezeInput = makeInput(moveContent, "Freeze Duration (1-5 sec)", 2, function(v)
+    freezeDuration = v
+end, 1, 5)
+
 -- Listen for click-to-tp keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if not clickTpKeybind then return end
     if input.KeyCode.Name ~= clickTpKeybind then return end
 
-    -- Raycast from mouse position into world
     local root = getRootPart()
     if not root then return end
 
-    local unitRay = Camera:ScreenPointToRay(
-        UserInputService:GetMouseLocation().X,
-        UserInputService:GetMouseLocation().Y
-    )
+    -- Raycast from mouse into world, hitting everything including walls/roof
+    local mousePos = UserInputService:GetMouseLocation()
+    local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {getCharacter()}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 5000, raycastParams)
+    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 10000, raycastParams)
 
     if result then
-        -- Teleport just above the hit position
-        root.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
+        -- Place character right at the hit point regardless of surface direction
+        -- Offset slightly along the surface normal so we don't clip into it
+        local teleportPos = result.Position + (result.Normal * 3)
+        root.CFrame = CFrame.new(teleportPos)
         notify("Teleport", "Teleported!")
+
+        -- Freeze if enabled
+        if freezeOnTp then
+            local hum = getHumanoid()
+            if hum then
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                pcall(function() hum.JumpHeight = 0 end)
+                notify("Frozen", "Frozen for "..freezeDuration.."s")
+                task.delay(freezeDuration, function()
+                    local h = getHumanoid()
+                    if h then
+                        h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed
+                        h.JumpPower = JumpPowerValue or 50
+                        pcall(function() h.JumpHeight = JumpPowerValue or 50 end)
+                    end
+                    notify("Frozen", "Unfrozen!")
+                end)
+            end
+        end
     else
         notify("Teleport", "No surface found — aim at a surface")
     end
