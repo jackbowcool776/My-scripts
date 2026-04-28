@@ -1525,91 +1525,94 @@ local markerLine = nil
 local markerLineConn = nil
 
 local function clearMarker()
-    if markerPart then pcall(function() markerPart:Destroy() end) markerPart = nil end
-    if markerLine then pcall(function() markerLine:Destroy() end) markerLine = nil end
-    if markerLineConn then markerLineConn:Disconnect() markerLineConn = nil end
+    if markerPart then
+        pcall(function() markerPart:Destroy() end)
+        markerPart = nil
+    end
+    if markerLine then
+        pcall(function() markerLine:Destroy() end)
+        markerLine = nil
+    end
+    if markerLineConn then
+        markerLineConn:Disconnect()
+        markerLineConn = nil
+    end
 end
 
 local function createMarkerAt(pos)
     clearMarker()
 
-    -- Marker sphere at target position
+    -- Marker sphere
     local marker = Instance.new("Part")
     marker.Name = "TeleportMarker"
     marker.Anchored = true
     marker.CanCollide = false
-    marker.CanQuery = false
-    marker.Size = Vector3.new(1.5, 1.5, 1.5)
+    marker.Size = Vector3.new(2, 2, 2)
     marker.Shape = Enum.PartType.Ball
     marker.Material = Enum.Material.Neon
     marker.Color = Color3.fromRGB(0, 200, 255)
-    marker.CFrame = CFrame.new(pos)
+    marker.CastShadow = false
+    marker.Position = pos
     marker.Parent = workspace
     markerPart = marker
 
-    -- Line (a thin part that stretches from avatar to marker)
+    -- Line part
     local line = Instance.new("Part")
     line.Name = "TeleportLine"
     line.Anchored = true
     line.CanCollide = false
-    line.CanQuery = false
     line.Material = Enum.Material.Neon
     line.Color = Color3.fromRGB(0, 200, 255)
-    line.Size = Vector3.new(0.1, 0.1, 1)
+    line.Size = Vector3.new(0.15, 0.15, 1)
+    line.CastShadow = false
     line.Parent = workspace
     markerLine = line
 
-    -- Update line every frame to stretch from avatar to marker
+    -- Update line every frame
     markerLineConn = RunService.Heartbeat:Connect(function()
-        if not markerPart or not markerLine then
-            if markerLineConn then markerLineConn:Disconnect() end
+        local mp = markerPart
+        local ml = markerLine
+        if not mp or not mp.Parent or not ml or not ml.Parent then
+            clearMarker()
             return
         end
         local root = getRootPart()
         if not root then return end
-
         local startPos = root.Position
-        local endPos = markerPart.Position
-        local midPoint = (startPos + endPos) / 2
-        local length = (endPos - startPos).Magnitude
-        local direction = (endPos - startPos).Unit
-
-        markerLine.Size = Vector3.new(0.1, 0.1, length)
-        markerLine.CFrame = CFrame.new(midPoint, midPoint + direction)
+        local endPos = mp.Position
+        local dist = (endPos - startPos).Magnitude
+        if dist < 0.01 then return end
+        local mid = (startPos + endPos) / 2
+        local dir = (endPos - startPos).Unit
+        ml.Size = Vector3.new(0.15, 0.15, dist)
+        ml.CFrame = CFrame.new(mid, mid + dir)
     end)
 
-    notify("Marker", "Marker placed! Press key again to teleport there, or right-click to clear")
+    notify("Marker", "Marker placed! Press key again to teleport, right-click to clear")
 end
 
+-- Marker keybind listener
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
+
+    -- Right click clears marker
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        if markerPart then
+            clearMarker()
+            notify("Marker", "Marker cleared")
+        end
+        return
+    end
+
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if not clickTpKeybind then return end
     if input.KeyCode.Name ~= clickTpKeybind then return end
 
     local root = getRootPart()
     if not root then return end
 
-    local mousePos = UserInputService:GetMouseLocation()
-    local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
-
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {getCharacter(), markerPart, markerLine}
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100000, raycastParams)
-
-    local targetPos
-    if result then
-        targetPos = result.Position + (result.Normal * 2.5)
-    else
-        targetPos = unitRay.Origin + unitRay.Direction * 2000
-    end
-
-    if not markerPart then
-        -- First press — place marker
-        createMarkerAt(targetPos)
-    else
-        -- Second press — teleport to marker then clear it
+    if markerPart then
+        -- Second press — teleport to marker
         local tpPos = markerPart.Position
         clearMarker()
 
@@ -1653,14 +1656,25 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 end)
             end
         end
-    end
-end)
+    else
+        -- First press — place marker
+        local mousePos = UserInputService:GetMouseLocation()
+        local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
--- Right click clears the marker
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 and markerPart then
-        clearMarker()
-        notify("Marker", "Marker cleared")
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {getCharacter()}
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100000, raycastParams)
+
+        local targetPos
+        if result then
+            targetPos = result.Position + (result.Normal * 2.5)
+        else
+            targetPos = unitRay.Origin + unitRay.Direction * 2000
+        end
+
+        createMarkerAt(targetPos)
     end
 end)
 
