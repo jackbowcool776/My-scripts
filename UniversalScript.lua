@@ -1520,6 +1520,67 @@ end, 1, 5)
 
 -- Listen for click-to-tp keybind
 local freezeBodyPos = nil
+local markerPart = nil
+local markerLine = nil
+local markerLineConn = nil
+
+local function clearMarker()
+    if markerPart then pcall(function() markerPart:Destroy() end) markerPart = nil end
+    if markerLine then pcall(function() markerLine:Destroy() end) markerLine = nil end
+    if markerLineConn then markerLineConn:Disconnect() markerLineConn = nil end
+end
+
+local function createMarkerAt(pos)
+    clearMarker()
+
+    -- Marker sphere at target position
+    local marker = Instance.new("Part")
+    marker.Name = "TeleportMarker"
+    marker.Anchored = true
+    marker.CanCollide = false
+    marker.CanQuery = false
+    marker.Size = Vector3.new(1.5, 1.5, 1.5)
+    marker.Shape = Enum.PartType.Ball
+    marker.Material = Enum.Material.Neon
+    marker.Color = Color3.fromRGB(0, 200, 255)
+    marker.CFrame = CFrame.new(pos)
+    marker.Parent = workspace
+    markerPart = marker
+
+    -- Line (a thin part that stretches from avatar to marker)
+    local line = Instance.new("Part")
+    line.Name = "TeleportLine"
+    line.Anchored = true
+    line.CanCollide = false
+    line.CanQuery = false
+    line.Material = Enum.Material.Neon
+    line.Color = Color3.fromRGB(0, 200, 255)
+    line.Size = Vector3.new(0.1, 0.1, 1)
+    line.Parent = workspace
+    markerLine = line
+
+    -- Update line every frame to stretch from avatar to marker
+    markerLineConn = RunService.Heartbeat:Connect(function()
+        if not markerPart or not markerLine then
+            if markerLineConn then markerLineConn:Disconnect() end
+            return
+        end
+        local root = getRootPart()
+        if not root then return end
+
+        local startPos = root.Position
+        local endPos = markerPart.Position
+        local midPoint = (startPos + endPos) / 2
+        local length = (endPos - startPos).Magnitude
+        local direction = (endPos - startPos).Unit
+
+        markerLine.Size = Vector3.new(0.1, 0.1, length)
+        markerLine.CFrame = CFrame.new(midPoint, midPoint + direction)
+    end)
+
+    notify("Marker", "Marker placed! Press key again to teleport there, or right-click to clear")
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if not clickTpKeybind then return end
@@ -1528,76 +1589,78 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     local root = getRootPart()
     if not root then return end
 
-    -- In third person the camera origin is behind the character
-    -- Use the camera's position as ray origin but aim from center of screen
-    -- to get accurate world position regardless of camera distance
     local mousePos = UserInputService:GetMouseLocation()
     local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {getCharacter()}
+    raycastParams.FilterDescendantsInstances = {getCharacter(), markerPart, markerLine}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
     local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100000, raycastParams)
 
-    local teleportPos
+    local targetPos
     if result then
-        teleportPos = result.Position + (result.Normal * 2.5)
+        targetPos = result.Position + (result.Normal * 2.5)
     else
-        teleportPos = unitRay.Origin + unitRay.Direction * 2000
+        targetPos = unitRay.Origin + unitRay.Direction * 2000
     end
 
-    -- Set position and immediately kill velocity
-    root.CFrame = CFrame.new(teleportPos, teleportPos + root.CFrame.LookVector)
-    pcall(function()
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end)
+    if not markerPart then
+        -- First press — place marker
+        createMarkerAt(targetPos)
+    else
+        -- Second press — teleport to marker then clear it
+        local tpPos = markerPart.Position
+        clearMarker()
 
-    notify("Teleport", "Teleported!")
+        root.CFrame = CFrame.new(tpPos, tpPos + root.CFrame.LookVector)
+        pcall(function()
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end)
+        notify("Teleport", "Teleported to marker!")
 
-    if freezeOnTp then
-        local hum = getHumanoid()
-        if hum then
-            if freezeBodyPos then
-                pcall(function() freezeBodyPos:Destroy() end)
-                freezeBodyPos = nil
-            end
-
-            hum.WalkSpeed = 0
-            hum.JumpPower = 0
-            pcall(function() hum.JumpHeight = 0 end)
-
-            task.wait(0.05)
-            local currentRoot = getRootPart()
-            if currentRoot then
-                local bp = Instance.new("BodyPosition")
-                bp.Name = "FreezePos"
-                bp.Position = currentRoot.Position
-                bp.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bp.P = 1e4
-                bp.D = 1e3
-                bp.Parent = currentRoot
-                freezeBodyPos = bp
-                currentRoot.AssemblyLinearVelocity = Vector3.zero
-            end
-
-            notify("Frozen", "Frozen in air for "..freezeDuration.."s")
-
-            task.delay(freezeDuration, function()
-                if freezeBodyPos then
-                    pcall(function() freezeBodyPos:Destroy() end)
-                    freezeBodyPos = nil
+        if freezeOnTp then
+            local hum = getHumanoid()
+            if hum then
+                if freezeBodyPos then pcall(function() freezeBodyPos:Destroy() end) freezeBodyPos = nil end
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                pcall(function() hum.JumpHeight = 0 end)
+                task.wait(0.05)
+                local r = getRootPart()
+                if r then
+                    local bp = Instance.new("BodyPosition")
+                    bp.Name = "FreezePos"
+                    bp.Position = r.Position
+                    bp.MaxForce = Vector3.new(1e9,1e9,1e9)
+                    bp.P = 1e4
+                    bp.D = 1e3
+                    bp.Parent = r
+                    freezeBodyPos = bp
+                    r.AssemblyLinearVelocity = Vector3.zero
                 end
-                local h = getHumanoid()
-                if h then
-                    h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed
-                    h.JumpPower = JumpPowerValue or 50
-                    pcall(function() h.JumpHeight = JumpPowerValue or 50 end)
-                end
-                notify("Frozen", "Unfrozen!")
-            end)
+                notify("Frozen", "Frozen for "..freezeDuration.."s")
+                task.delay(freezeDuration, function()
+                    if freezeBodyPos then pcall(function() freezeBodyPos:Destroy() end) freezeBodyPos = nil end
+                    local h = getHumanoid()
+                    if h then
+                        h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed
+                        h.JumpPower = JumpPowerValue or 50
+                        pcall(function() h.JumpHeight = JumpPowerValue or 50 end)
+                    end
+                    notify("Frozen", "Unfrozen!")
+                end)
+            end
         end
+    end
+end)
+
+-- Right click clears the marker
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and markerPart then
+        clearMarker()
+        notify("Marker", "Marker cleared")
     end
 end)
 
