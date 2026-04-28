@@ -1662,30 +1662,34 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
         local raycastParams = RaycastParams.new()
-        -- Exclude entire character and existing marker/line
+        -- Exclude all character parts individually
         local excluded = {}
         local char = getCharacter()
         if char then
             for _, d in pairs(char:GetDescendants()) do
                 if d:IsA("BasePart") then table.insert(excluded, d) end
             end
+            -- Also add the character model itself
+            table.insert(excluded, char)
         end
         if markerPart then table.insert(excluded, markerPart) end
         if markerLine then table.insert(excluded, markerLine) end
         raycastParams.FilterDescendantsInstances = excluded
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-        -- Cast multiple times in case we hit something we shouldn't
-        local origin = unitRay.Origin
-        local direction = unitRay.Direction * 100000
-        local result = workspace:Raycast(origin, direction, raycastParams)
+        -- Start ray slightly forward from camera to skip near-plane hits
+        local rayOrigin = unitRay.Origin + unitRay.Direction * 1.5
+        local rayDirection = unitRay.Direction * 100000
+
+        local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 
         local targetPos
         if result then
+            -- Use the exact hit position offset along normal
+            -- For walls the normal is horizontal, for floor it's up, for ceiling it's down
             targetPos = result.Position + (result.Normal * 2.5)
         else
-            -- Nothing hit - go far in ray direction
-            targetPos = origin + unitRay.Direction * 500
+            targetPos = rayOrigin + unitRay.Direction * 500
         end
 
         createMarkerAt(targetPos)
