@@ -1578,8 +1578,7 @@ local function createMarkerAt(pos)
         end
         local root = getRootPart()
         if not root then return end
-        -- Start line from character's root position
-        local startPos = root.Position
+        local startPos = root.Position + Vector3.new(0, 0.5, 0)
         local endPos = mp.Position
         local dist = (endPos - startPos).Magnitude
         if dist < 0.01 then return end
@@ -1617,7 +1616,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         local tpPos = markerPart.Position
         clearMarker()
 
-        root.CFrame = CFrame.new(tpPos, tpPos + root.CFrame.LookVector)
+        -- Offset upward so feet land at marker position
+        local charHeight = 3
+        local hum = getHumanoid()
+        if hum then
+            pcall(function() charHeight = hum.HipHeight + 1.5 end)
+        end
+        local finalPos = tpPos + Vector3.new(0, charHeight, 0)
+
+        root.CFrame = CFrame.new(finalPos, finalPos + root.CFrame.LookVector)
         pcall(function()
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
@@ -1662,34 +1669,20 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         local mousePos = UserInputService:GetMouseLocation()
         local unitRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
 
-        -- Build full exclude list: every single descendant of character
-        local excluded = {}
-        local char = getCharacter()
-        if char then
-            -- Add the model and ALL descendants regardless of class
-            table.insert(excluded, char)
-            for _, d in pairs(char:GetDescendants()) do
-                table.insert(excluded, d)
-            end
-        end
-        -- Also exclude camera, marker, line
-        table.insert(excluded, Camera)
-        if markerPart then table.insert(excluded, markerPart) end
-        if markerLine then table.insert(excluded, markerLine) end
-
         local raycastParams = RaycastParams.new()
-        raycastParams.FilterDescendantsInstances = excluded
+        raycastParams.FilterDescendantsInstances = {getCharacter()}
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        raycastParams.IgnoreWater = true
 
-        -- Start ray from camera position + small offset forward
-        -- This ensures we start past any near-clip issues
-        local rayOrigin = Camera.CFrame.Position + unitRay.Direction * 0.5
+        -- Start the ray 10 studs in front of the camera
+        -- This guarantees we skip past the character entirely since
+        -- characters are max ~6 studs wide
+        local rayOrigin = Camera.CFrame.Position + unitRay.Direction * 10
         local result = workspace:Raycast(rayOrigin, unitRay.Direction * 100000, raycastParams)
 
         local targetPos
         if result then
-            targetPos = result.Position + (result.Normal * 2.5)
+            -- Sit the marker right on the surface with just a tiny offset so it doesn't clip
+            targetPos = result.Position + (result.Normal * 0.1)
         else
             targetPos = rayOrigin + unitRay.Direction * 500
         end
