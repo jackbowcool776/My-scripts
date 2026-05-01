@@ -63,10 +63,47 @@ local moveTabFlyBox = nil
 -- =====================
 -- FEATURES
 -- =====================
+
+-- Camera perspective functions
+local function setThirdPerson()
+    LocalPlayer.CameraMode = Enum.CameraMode.Classic
+    -- Allow zooming by setting min/max zoom
+    pcall(function()
+        LocalPlayer.CameraMinZoomDistance = 0.5
+        LocalPlayer.CameraMaxZoomDistance = 128
+    end)
+    notify("Camera", "Third Person — scroll to zoom")
+end
+
+local function setFirstPerson()
+    LocalPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
+    notify("Camera", "First Person locked")
+end
+
+local speedConn = nil
 local function toggleSpeed()
     States.Speed = not States.Speed
     local h = getHumanoid()
-    if h then h.WalkSpeed = States.Speed and SpeedValue or OriginalWalkSpeed end
+    if States.Speed then
+        if h then h.WalkSpeed = SpeedValue end
+        -- Keep applying speed every frame since some games reset it
+        if not speedConn then
+            speedConn = RunService.Heartbeat:Connect(function()
+                if not States.Speed then
+                    speedConn:Disconnect()
+                    speedConn = nil
+                    return
+                end
+                local hum = getHumanoid()
+                if hum and hum.WalkSpeed ~= SpeedValue then
+                    hum.WalkSpeed = SpeedValue
+                end
+            end)
+        end
+    else
+        if speedConn then speedConn:Disconnect() speedConn = nil end
+        if h then h.WalkSpeed = OriginalWalkSpeed end
+    end
     notify("Speed", States.Speed and "ON" or "OFF")
 end
 
@@ -176,6 +213,18 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if States.Speed then
         local h = getHumanoid()
         if h then h.WalkSpeed = SpeedValue end
+        if speedConn then speedConn:Disconnect() speedConn = nil end
+        speedConn = RunService.Heartbeat:Connect(function()
+            if not States.Speed then
+                speedConn:Disconnect()
+                speedConn = nil
+                return
+            end
+            local hum = getHumanoid()
+            if hum and hum.WalkSpeed ~= SpeedValue then
+                hum.WalkSpeed = SpeedValue
+            end
+        end)
     end
     if JumpPowerValue and JumpPowerValue ~= 50 then
         local h = getHumanoid()
@@ -1691,6 +1740,8 @@ makeSection(cmdsContent, "Click to copy")
 
 local cmdList = {
     {"!speed [num]",     "Set speed e.g. !speed 100"},
+    {"!thirdp",          "Force third person"},
+    {"!firstp",          "Lock first person"},
     {"!jump",            "Toggle infinite jump"},
     {"!afk",             "Toggle anti-AFK"},
     {"!bright",          "Toggle fullbright"},
@@ -1810,6 +1861,8 @@ LocalPlayer.Chatted:Connect(function(msg)
             toggleNoclip()
             if switchRefs["Noclip"] then switchRefs["Noclip"](false) end
         end
+    elseif cmd == "!thirdp" then setThirdPerson()
+    elseif cmd == "!firstp" then setFirstPerson()
     elseif cmd == "!rejoin" then rejoin()
     elseif cmd == "!reset" then resetCharacter()
     elseif cmd == "!hop" then serverHop()
