@@ -30,31 +30,30 @@ local HEADERS   = {
 }
 
 local function fetchWhitelist()
+    -- If BIN_ID isn't set yet, skip the fetch
+    if BIN_ID == "YOUR_BIN_ID_HERE" or API_KEY == "YOUR_API_KEY_HERE" then
+        return true -- skip whitelist if not configured
+    end
     local ok, res = pcall(function()
-        return game:HttpGetAsync(BIN_URL.."/latest", true, HEADERS)
+        return game:HttpGet(BIN_URL.."/latest")
     end)
-    if not ok then return false end
-    local decoded = pcall(function()
+    if not ok or not res then return true end -- fail open so script still loads
+    pcall(function()
         local data = HttpService:JSONDecode(res)
-        liveWhitelist = data.record.whitelist or {}
+        if data and data.record and data.record.whitelist then
+            liveWhitelist = data.record.whitelist
+        end
     end)
     return true
 end
 
 local function saveWhitelist()
+    if BIN_ID == "YOUR_BIN_ID_HERE" then return end
     local body = HttpService:JSONEncode({whitelist = liveWhitelist})
     pcall(function()
-        game:HttpGetAsync(BIN_URL, false, HEADERS, body) -- PUT via headers trick
-        -- JSONBin update requires PUT — use syn.request or request if available
-        if request then
-            request({
-                Url = BIN_URL,
-                Method = "PUT",
-                Headers = HEADERS,
-                Body = body,
-            })
-        elseif syn and syn.request then
-            syn.request({
+        local reqFunc = request or (syn and syn.request) or (http and http.request)
+        if reqFunc then
+            reqFunc({
                 Url = BIN_URL,
                 Method = "PUT",
                 Headers = HEADERS,
@@ -65,6 +64,8 @@ local function saveWhitelist()
 end
 
 local function isWhitelisted(userId)
+    -- If not configured, allow everyone
+    if BIN_ID == "YOUR_BIN_ID_HERE" or OWNER_ID == 0 then return true end
     -- Owner always has access
     if userId == OWNER_ID then return true end
     for _, id in ipairs(liveWhitelist) do
