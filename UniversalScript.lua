@@ -5,68 +5,53 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 
 -- =====================
 -- WHITELIST CONFIG
--- 1. Go to jsonbin.io and sign up free
--- 2. Click "Create a Bin" and paste: {"whitelist":[]}
--- 3. Copy the Bin ID from the URL (looks like: 64abc123...)
--- 4. Go to Account > API Keys and create a Master Key
--- 5. Paste both below
+-- Fill these in to enable the whitelist system
+-- Leave BIN_ID as "YOUR_BIN_ID_HERE" to disable (everyone can use)
 -- =====================
-local BIN_ID    = "YOUR_BIN_ID_HERE"   -- e.g. "64abc1234567890abc123456"
-local API_KEY   = "YOUR_API_KEY_HERE"  -- e.g. "$2b$10$abc..."
-local OWNER_ID  = 0                    -- Your Roblox UserId (number only)
+local BIN_ID   = "YOUR_BIN_ID_HERE"
+local API_KEY  = "YOUR_API_KEY_HERE"
+local OWNER_ID = 0
 
-local Players        = game:GetService("Players")
-local HttpService    = game:GetService("HttpService")
-local LocalPlayer    = Players.LocalPlayer
-local TweenService   = game:GetService("TweenService")
+local Players     = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local TweenService = game:GetService("TweenService")
 
--- Live whitelist loaded from JSONBin
 local liveWhitelist = {}
+local whitelistEnabled = (BIN_ID ~= "YOUR_BIN_ID_HERE" and OWNER_ID ~= 0)
 
-local BIN_URL   = "https://api.jsonbin.io/v3/b/"..BIN_ID
-local HEADERS   = {
+local BIN_URL = "https://api.jsonbin.io/v3/b/"..BIN_ID
+local HEADERS = {
     ["X-Master-Key"] = API_KEY,
-    ["Content-Type"] = "application/json",
+    ["Content-Type"]  = "application/json",
 }
 
 local function fetchWhitelist()
-    -- If BIN_ID isn't set yet, skip the fetch
-    if BIN_ID == "YOUR_BIN_ID_HERE" or API_KEY == "YOUR_API_KEY_HERE" then
-        return true -- skip whitelist if not configured
-    end
-    local ok, res = pcall(function()
-        return game:HttpGet(BIN_URL.."/latest")
-    end)
-    if not ok or not res then return true end -- fail open so script still loads
+    if not whitelistEnabled then return end
     pcall(function()
+        local res = game:HttpGet(BIN_URL.."/latest")
         local data = HttpService:JSONDecode(res)
         if data and data.record and data.record.whitelist then
             liveWhitelist = data.record.whitelist
         end
     end)
-    return true
 end
 
 local function saveWhitelist()
-    if BIN_ID == "YOUR_BIN_ID_HERE" then return end
-    local body = HttpService:JSONEncode({whitelist = liveWhitelist})
+    if not whitelistEnabled then return end
     pcall(function()
-        local reqFunc = request or (syn and syn.request) or (http and http.request)
+        local body = HttpService:JSONEncode({whitelist = liveWhitelist})
+        local reqFunc = (typeof(request)=="function" and request)
+                     or (syn and syn.request)
+                     or (http and http.request)
         if reqFunc then
-            reqFunc({
-                Url = BIN_URL,
-                Method = "PUT",
-                Headers = HEADERS,
-                Body = body,
-            })
+            reqFunc({Url=BIN_URL, Method="PUT", Headers=HEADERS, Body=body})
         end
     end)
 end
 
 local function isWhitelisted(userId)
-    -- If not configured, allow everyone
-    if BIN_ID == "YOUR_BIN_ID_HERE" or OWNER_ID == 0 then return true end
-    -- Owner always has access
+    if not whitelistEnabled then return true end
     if userId == OWNER_ID then return true end
     for _, id in ipairs(liveWhitelist) do
         if id == userId then return true end
@@ -141,7 +126,7 @@ local function showAccessDenied()
     idLbl.TextColor3 = Color3.fromRGB(100,100,130)
     idLbl.Font = Enum.Font.GothamBold
     idLbl.TextSize = 12
-    idLbl.Text = "Your UserId: "..tostring(LocalPlayer.UserId).." (give this to the owner)"
+    idLbl.Text = "Your UserId: "..tostring(LocalPlayer.UserId)
     idLbl.Parent = box
 
     local closeBtn = Instance.new("TextButton")
@@ -158,12 +143,13 @@ local function showAccessDenied()
     closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 end
 
--- Load whitelist then check access
-fetchWhitelist()
-
-if not isWhitelisted(LocalPlayer.UserId) then
-    showAccessDenied()
-    return
+-- Only fetch if whitelist is enabled
+if whitelistEnabled then
+    fetchWhitelist()
+    if not isWhitelisted(LocalPlayer.UserId) then
+        showAccessDenied()
+        return
+    end
 end
 
 -- Access granted
